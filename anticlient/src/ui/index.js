@@ -704,7 +704,38 @@ export const initUI = () => {
                 label.textContent = key
                 row.appendChild(label)
 
-                if (typeof val === 'number') {
+                // Special handling for logLevel (dropdown)
+                if (key === 'logLevel' && mod.id === 'loggersettings') {
+                    const select = document.createElement('select')
+                    select.style.background = '#1a1a20'
+                    select.style.color = 'white'
+                    select.style.border = '1px solid #444'
+                    select.style.padding = '4px'
+                    select.style.borderRadius = '4px'
+                    select.style.cursor = 'pointer'
+
+                    const levels = [
+                        { value: 0, label: 'Debug' },
+                        { value: 1, label: 'Info' },
+                        { value: 2, label: 'Warning' },
+                        { value: 3, label: 'Error' },
+                        { value: 4, label: 'None' }
+                    ]
+
+                    levels.forEach(level => {
+                        const option = document.createElement('option')
+                        option.value = level.value
+                        option.textContent = level.label
+                        option.selected = val === level.value
+                        select.appendChild(option)
+                    })
+
+                    select.onchange = (e) => {
+                        mod.settings[key] = parseInt(e.target.value)
+                    }
+
+                    row.appendChild(select)
+                } else if (typeof val === 'number') {
                     const input = document.createElement('input')
                     input.type = 'number'
                     input.className = 'ac-input-number'
