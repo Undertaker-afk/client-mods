@@ -6,8 +6,9 @@ import { loadPlayerModules } from './src/modules/player.js'
 import { loadWorldModules } from './src/modules/world.js'
 import { loadClientModules } from './src/modules/client.js'
 import { loadPacketsModules } from './src/modules/packets.js'
-import { modules } from './src/core/Module.js'
+import { modules, registerModule } from './src/core/Module.js'
 import { initUI } from './src/ui/index.js'
+import { logger, LogLevel } from './src/logger.js'
 
 export default (mod) => {
     // 0. Cleanup Previous Instance
@@ -17,7 +18,7 @@ export default (mod) => {
         } catch (e) { console.error(e) }
     }
 
-    console.log('[Anticlient] Initializing Modular Architecture...')
+    logger.info('Initializing Modular Architecture...')
 
     // 1. Load Modules
     loadCombatModules()
@@ -27,6 +28,31 @@ export default (mod) => {
     loadWorldModules()
     loadClientModules()
     loadPacketsModules()
+
+    // Load Logger Settings Module
+    const loggerSettings = registerModule({
+        id: 'loggersettings',
+        name: 'Logger Settings',
+        category: 'Settings',
+        description: 'Configure logging level (0=Debug, 1=Info, 2=Warning, 3=Error, 4=None)',
+        enabled: true,
+        settings: {
+            logLevel: 1 // INFO by default
+        },
+        onToggle: () => {},
+        onTick: () => {}
+    })
+
+    // Watch for log level changes
+    let lastLogLevel = loggerSettings.settings.logLevel
+    setInterval(() => {
+        if (loggerSettings.settings.logLevel !== lastLogLevel) {
+            lastLogLevel = loggerSettings.settings.logLevel
+            logger.setLevel(lastLogLevel)
+        }
+    }, 100)
+
+    logger.info(`Modules loaded. Total: ${Object.keys(modules).length}`)
 
     // 2. Initialize UI
     const cleanupUI = initUI()

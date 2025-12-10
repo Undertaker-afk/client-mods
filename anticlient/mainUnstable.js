@@ -566,20 +566,32 @@ var loadRenderModules = () => {
   });
   blockEsp.lastScan = 0;
   blockEsp.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("BlockESP");
+    if (log) log.info(`Block ESP ${enabled ? "enabled" : "disabled"}`);
     if (!window.anticlient) window.anticlient = { visuals: {} };
     if (!window.anticlient.visuals) window.anticlient.visuals = {};
     window.anticlient.visuals.blockEsp = enabled;
     window.anticlient.visuals.blockEspSettings = blockEsp.settings;
+    if (log && enabled) {
+      log.info(`Searching for blocks: ${blockEsp.settings.blocks.join(", ")}`);
+      log.info(`Range: ${blockEsp.settings.range} blocks`);
+    }
   };
   blockEsp.onTick = (bot) => {
     if (Date.now() - blockEsp.lastScan > 1e3) {
-      const blocks = bot.findBlocks({
-        matching: (block) => blockEsp.settings.blocks.some((name) => block.name.includes(name)),
-        maxDistance: blockEsp.settings.range,
-        count: 200
-      });
-      if (window.anticlient?.visuals) {
-        window.anticlient.visuals.blockEspLocations = blocks;
+      const log = window.anticlientLogger?.module("BlockESP");
+      try {
+        const blocks = bot.findBlocks({
+          matching: (block) => blockEsp.settings.blocks.some((name) => block.name.includes(name)),
+          maxDistance: blockEsp.settings.range,
+          count: 200
+        });
+        if (log) log.debug(`Found ${blocks.length} blocks`);
+        if (window.anticlient?.visuals) {
+          window.anticlient.visuals.blockEspLocations = blocks;
+        }
+      } catch (e) {
+        if (log) log.error("Error scanning for blocks:", e);
       }
       blockEsp.lastScan = Date.now();
     }
@@ -800,6 +812,122 @@ var loadPlayerModules = () => {
     }
   };
   registerModule(chestStealer);
+  const packetMine = new Module("packetmine", "Packet Mine", "Player", "Mine blocks without holding mouse button", {
+    enabled: false,
+    showProgress: true,
+    autoSwitch: false
+    // Auto switch to next block
+  });
+  let miningBlock = null;
+  let miningStartTime = null;
+  let miningProgress = 0;
+  let miningInterval = null;
+  packetMine.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { mining: {} };
+    if (!window.anticlient.mining) window.anticlient.mining = {};
+    if (!enabled) {
+      if (miningBlock && window.bot) {
+        try {
+          window.bot._client.write("block_dig", {
+            status: 1,
+            // cancel digging
+            location: miningBlock.position,
+            face: 1
+          });
+        } catch (e) {
+        }
+      }
+      miningBlock = null;
+      miningStartTime = null;
+      miningProgress = 0;
+      window.anticlient.mining.active = false;
+      window.anticlient.mining.block = null;
+      window.anticlient.mining.progress = 0;
+      if (miningInterval) {
+        clearInterval(miningInterval);
+        miningInterval = null;
+      }
+    } else {
+      if (!miningInterval) {
+        miningInterval = setInterval(() => {
+          if (!window.bot) return;
+          const mouseState = window.bot.controlState?.leftClick;
+          if (mouseState && !miningBlock) {
+            const block = window.bot.blockAtCursor(5);
+            if (block && window.bot.canDigBlock(block)) {
+              startMining(block);
+            }
+          }
+        }, 50);
+      }
+    }
+  };
+  const startMining = (block) => {
+    if (!window.bot || !window.bot._client) return;
+    miningBlock = block;
+    miningStartTime = Date.now();
+    miningProgress = 0;
+    const log = window.anticlientLogger?.module("PacketMine");
+    if (log) log.info("Started mining block at", block.position);
+    try {
+      window.bot._client.write("block_dig", {
+        status: 0,
+        // start digging
+        location: block.position,
+        face: 1
+        // top face
+      });
+      window.bot.swingArm();
+    } catch (e) {
+      if (log) log.error("Failed to send start digging packet:", e);
+    }
+  };
+  packetMine.onTick = (bot) => {
+    if (!bot || !bot._client) return;
+    if (miningBlock) {
+      const currentBlock = bot.blockAt(miningBlock.position);
+      if (!currentBlock || currentBlock.type === 0) {
+        const log = window.anticlientLogger?.module("PacketMine");
+        if (log) log.debug("Block broken successfully");
+        miningBlock = null;
+        miningStartTime = null;
+        miningProgress = 0;
+        if (window.anticlient && window.anticlient.mining) {
+          window.anticlient.mining.active = false;
+          window.anticlient.mining.block = null;
+          window.anticlient.mining.progress = 0;
+        }
+        return;
+      }
+      const digTime = bot.digTime(miningBlock);
+      const elapsed = Date.now() - miningStartTime;
+      miningProgress = Math.min(elapsed / digTime, 1);
+      if (window.anticlient && window.anticlient.mining) {
+        window.anticlient.mining.active = true;
+        window.anticlient.mining.block = {
+          x: miningBlock.position.x,
+          y: miningBlock.position.y,
+          z: miningBlock.position.z
+        };
+        window.anticlient.mining.progress = miningProgress;
+      }
+      if (miningProgress >= 1) {
+        const log = window.anticlientLogger?.module("PacketMine");
+        if (log) log.debug("Mining complete, sending finish packet");
+        try {
+          bot._client.write("block_dig", {
+            status: 2,
+            // finish digging
+            location: miningBlock.position,
+            face: 1
+          });
+        } catch (e) {
+          if (log) log.error("Failed to send finish digging packet:", e);
+        }
+      }
+    }
+  };
+  registerModule(packetMine);
 };
 
 // anticlient/src/modules/world.js
@@ -1689,7 +1817,33 @@ var initUI = () => {
         const label = document.createElement("span");
         label.textContent = key;
         row.appendChild(label);
-        if (typeof val === "number") {
+        if (key === "logLevel" && mod.id === "loggersettings") {
+          const select = document.createElement("select");
+          select.style.background = "#1a1a20";
+          select.style.color = "white";
+          select.style.border = "1px solid #444";
+          select.style.padding = "4px";
+          select.style.borderRadius = "4px";
+          select.style.cursor = "pointer";
+          const levels = [
+            { value: 0, label: "Debug" },
+            { value: 1, label: "Info" },
+            { value: 2, label: "Warning" },
+            { value: 3, label: "Error" },
+            { value: 4, label: "None" }
+          ];
+          levels.forEach((level) => {
+            const option = document.createElement("option");
+            option.value = level.value;
+            option.textContent = level.label;
+            option.selected = val === level.value;
+            select.appendChild(option);
+          });
+          select.onchange = (e) => {
+            mod.settings[key] = parseInt(e.target.value);
+          };
+          row.appendChild(select);
+        } else if (typeof val === "number") {
           const input = document.createElement("input");
           input.type = "number";
           input.className = "ac-input-number";
@@ -2060,6 +2214,68 @@ var initUI = () => {
   };
 };
 
+// anticlient/src/logger.js
+var LogLevel = {
+  DEBUG: 0,
+  INFO: 1,
+  WARNING: 2,
+  ERROR: 3,
+  NONE: 4
+};
+var Logger = class {
+  constructor() {
+    this.level = LogLevel.INFO;
+    this.prefix = "[Anticlient]";
+    this.colors = {
+      DEBUG: "#888888",
+      INFO: "#00ffff",
+      WARNING: "#ffaa00",
+      ERROR: "#ff5555"
+    };
+  }
+  setLevel(level) {
+    this.level = level;
+    this.info(`Log level set to: ${this.getLevelName(level)}`);
+  }
+  getLevelName(level) {
+    const names = ["DEBUG", "INFO", "WARNING", "ERROR", "NONE"];
+    return names[level] || "UNKNOWN";
+  }
+  debug(...args) {
+    if (this.level <= LogLevel.DEBUG) {
+      console.log(`%c${this.prefix} [DEBUG]`, `color: ${this.colors.DEBUG}`, ...args);
+    }
+  }
+  info(...args) {
+    if (this.level <= LogLevel.INFO) {
+      console.log(`%c${this.prefix} [INFO]`, `color: ${this.colors.INFO}`, ...args);
+    }
+  }
+  warning(...args) {
+    if (this.level <= LogLevel.WARNING) {
+      console.warn(`%c${this.prefix} [WARNING]`, `color: ${this.colors.WARNING}`, ...args);
+    }
+  }
+  error(...args) {
+    if (this.level <= LogLevel.ERROR) {
+      console.error(`%c${this.prefix} [ERROR]`, `color: ${this.colors.ERROR}`, ...args);
+    }
+  }
+  // Module-specific logger
+  module(moduleName) {
+    return {
+      debug: (...args) => this.debug(`[${moduleName}]`, ...args),
+      info: (...args) => this.info(`[${moduleName}]`, ...args),
+      warning: (...args) => this.warning(`[${moduleName}]`, ...args),
+      error: (...args) => this.error(`[${moduleName}]`, ...args)
+    };
+  }
+};
+var logger = new Logger();
+if (typeof window !== "undefined") {
+  window.anticlientLogger = logger;
+}
+
 // anticlient/entry.js
 var entry_default = (mod) => {
   if (window.anticlient && window.anticlient.cleanup) {
@@ -2069,7 +2285,7 @@ var entry_default = (mod) => {
       console.error(e);
     }
   }
-  console.log("[Anticlient] Initializing Modular Architecture...");
+  logger.info("Initializing Modular Architecture...");
   loadCombatModules();
   loadMovementModules();
   loadRenderModules();
@@ -2077,6 +2293,29 @@ var entry_default = (mod) => {
   loadWorldModules();
   loadClientModules();
   loadPacketsModules();
+  const loggerSettings = registerModule({
+    id: "loggersettings",
+    name: "Logger Settings",
+    category: "Settings",
+    description: "Configure logging level (0=Debug, 1=Info, 2=Warning, 3=Error, 4=None)",
+    enabled: true,
+    settings: {
+      logLevel: 1
+      // INFO by default
+    },
+    onToggle: () => {
+    },
+    onTick: () => {
+    }
+  });
+  let lastLogLevel = loggerSettings.settings.logLevel;
+  setInterval(() => {
+    if (loggerSettings.settings.logLevel !== lastLogLevel) {
+      lastLogLevel = loggerSettings.settings.logLevel;
+      logger.setLevel(lastLogLevel);
+    }
+  }, 100);
+  logger.info(`Modules loaded. Total: ${Object.keys(modules).length}`);
   const cleanupUI = initUI();
   let bot = void 0;
   let loopRunning = true;

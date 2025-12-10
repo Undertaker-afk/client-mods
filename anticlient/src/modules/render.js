@@ -79,21 +79,39 @@ export const loadRenderModules = () => {
     })
     blockEsp.lastScan = 0
     blockEsp.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('BlockESP')
+        if (log) log.info(`Block ESP ${enabled ? 'enabled' : 'disabled'}`)
+
         if (!window.anticlient) window.anticlient = { visuals: {} }
         if (!window.anticlient.visuals) window.anticlient.visuals = {}
         window.anticlient.visuals.blockEsp = enabled
         window.anticlient.visuals.blockEspSettings = blockEsp.settings
+
+        if (log && enabled) {
+            log.info(`Searching for blocks: ${blockEsp.settings.blocks.join(', ')}`)
+            log.info(`Range: ${blockEsp.settings.range} blocks`)
+        }
     }
     blockEsp.onTick = (bot) => {
         if (Date.now() - blockEsp.lastScan > 1000) {
-            const blocks = bot.findBlocks({
-                matching: (block) => blockEsp.settings.blocks.some(name => block.name.includes(name)),
-                maxDistance: blockEsp.settings.range,
-                count: 200
-            })
-            if (window.anticlient?.visuals) {
-                window.anticlient.visuals.blockEspLocations = blocks
+            const log = window.anticlientLogger?.module('BlockESP')
+
+            try {
+                const blocks = bot.findBlocks({
+                    matching: (block) => blockEsp.settings.blocks.some(name => block.name.includes(name)),
+                    maxDistance: blockEsp.settings.range,
+                    count: 200
+                })
+
+                if (log) log.debug(`Found ${blocks.length} blocks`)
+
+                if (window.anticlient?.visuals) {
+                    window.anticlient.visuals.blockEspLocations = blocks
+                }
+            } catch (e) {
+                if (log) log.error('Error scanning for blocks:', e)
             }
+
             blockEsp.lastScan = Date.now()
         }
     }

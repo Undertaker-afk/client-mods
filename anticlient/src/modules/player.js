@@ -244,4 +244,148 @@ export const loadPlayerModules = () => {
     }
     
     registerModule(chestStealer)
+
+    // -- Packet Mine --
+    const packetMine = new Module('packetmine', 'Packet Mine', 'Player', 'Mine blocks without holding mouse button', {
+        enabled: false,
+        showProgress: true,
+        autoSwitch: false // Auto switch to next block
+    })
+
+    let miningBlock = null
+    let miningStartTime = null
+    let miningProgress = 0
+    let miningInterval = null
+
+    packetMine.onToggle = (enabled) => {
+        if (!window.anticlient) window.anticlient = { mining: {} }
+        if (!window.anticlient.mining) window.anticlient.mining = {}
+
+        if (!enabled) {
+            // Clear mining state
+            if (miningBlock && window.bot) {
+                try {
+                    window.bot._client.write('block_dig', {
+                        status: 1, // cancel digging
+                        location: miningBlock.position,
+                        face: 1
+                    })
+                } catch (e) {}
+            }
+            miningBlock = null
+            miningStartTime = null
+            miningProgress = 0
+            window.anticlient.mining.active = false
+            window.anticlient.mining.block = null
+            window.anticlient.mining.progress = 0
+
+            if (miningInterval) {
+                clearInterval(miningInterval)
+                miningInterval = null
+            }
+        } else {
+            // Listen for left click to start mining
+            if (!miningInterval) {
+                miningInterval = setInterval(() => {
+                    if (!window.bot) return
+
+                    // Check if left mouse button is pressed (start mining)
+                    const mouseState = window.bot.controlState?.leftClick
+                    if (mouseState && !miningBlock) {
+                        const block = window.bot.blockAtCursor(5)
+                        if (block && window.bot.canDigBlock(block)) {
+                            startMining(block)
+                        }
+                    }
+                }, 50)
+            }
+        }
+    }
+
+    const startMining = (block) => {
+        if (!window.bot || !window.bot._client) return
+
+        miningBlock = block
+        miningStartTime = Date.now()
+        miningProgress = 0
+
+        const log = window.anticlientLogger?.module('PacketMine')
+        if (log) log.info('Started mining block at', block.position)
+
+        // Send start digging packet
+        try {
+            window.bot._client.write('block_dig', {
+                status: 0, // start digging
+                location: block.position,
+                face: 1 // top face
+            })
+
+            // Swing arm
+            window.bot.swingArm()
+        } catch (e) {
+            if (log) log.error('Failed to send start digging packet:', e)
+        }
+    }
+
+    packetMine.onTick = (bot) => {
+        if (!bot || !bot._client) return
+
+        // If currently mining a block
+        if (miningBlock) {
+            // Check if block still exists
+            const currentBlock = bot.blockAt(miningBlock.position)
+            if (!currentBlock || currentBlock.type === 0) {
+                // Block was broken
+                const log = window.anticlientLogger?.module('PacketMine')
+                if (log) log.debug('Block broken successfully')
+
+                miningBlock = null
+                miningStartTime = null
+                miningProgress = 0
+
+                if (window.anticlient && window.anticlient.mining) {
+                    window.anticlient.mining.active = false
+                    window.anticlient.mining.block = null
+                    window.anticlient.mining.progress = 0
+                }
+                return
+            }
+
+            // Calculate mining progress
+            const digTime = bot.digTime(miningBlock)
+            const elapsed = Date.now() - miningStartTime
+            miningProgress = Math.min(elapsed / digTime, 1.0)
+
+            // Update global state for visual overlay
+            if (window.anticlient && window.anticlient.mining) {
+                window.anticlient.mining.active = true
+                window.anticlient.mining.block = {
+                    x: miningBlock.position.x,
+                    y: miningBlock.position.y,
+                    z: miningBlock.position.z
+                }
+                window.anticlient.mining.progress = miningProgress
+            }
+
+            // If mining is complete, send finish packet
+            if (miningProgress >= 1.0) {
+                const log = window.anticlientLogger?.module('PacketMine')
+                if (log) log.debug('Mining complete, sending finish packet')
+
+                try {
+                    bot._client.write('block_dig', {
+                        status: 2, // finish digging
+                        location: miningBlock.position,
+                        face: 1
+                    })
+                } catch (e) {
+                    if (log) log.error('Failed to send finish digging packet:', e)
+                }
+
+                // Don't reset immediately, wait for block to actually break
+            }
+        }
+    }
+
+    registerModule(packetMine)
 }
