@@ -1328,72 +1328,120 @@ var initUI = () => {
   const canvas = document.createElement("canvas");
   canvas.width = 280;
   canvas.height = 400;
+  canvas.style.display = "block";
   previewPanel.appendChild(canvas);
   bodyEl.appendChild(previewPanel);
   document.body.appendChild(uiRoot);
   let activeTab = "Movement";
-  const ctx = canvas.getContext("2d");
-  const drawSteve = () => {
-    if (activeTab !== "Render") return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "#222";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let x = 0; x < canvas.width; x += 20) {
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
+  let previewScene = null;
+  let previewCamera = null;
+  let previewRenderer = null;
+  let previewPlayerWrapper = null;
+  let previewPlayerObject = null;
+  let previewESPBox = null;
+  let previewStorageBox = null;
+  let previewAnimationId = null;
+  const init3DPreview = () => {
+    if (!window.THREE) {
+      console.warn("[Anticlient] THREE.js not available, falling back to 2D preview");
+      return false;
     }
-    for (let y = 0; y < canvas.height; y += 20) {
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-    }
-    ctx.stroke();
-    const esp = modules["esp"];
-    const storageEsp = modules["storageesp"];
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2 + 50;
-    const steveColor = "#555";
-    ctx.fillStyle = steveColor;
-    ctx.fillRect(cx - 20, cy - 160, 40, 40);
-    ctx.fillRect(cx - 20, cy - 120, 40, 60);
-    ctx.fillRect(cx - 40, cy - 120, 20, 60);
-    ctx.fillRect(cx + 20, cy - 120, 20, 60);
-    ctx.fillRect(cx - 20, cy - 60, 20, 60);
-    ctx.fillRect(cx, cy - 60, 20, 60);
-    if (esp && esp.enabled) {
-      const pc = esp.settings.playerColor || "#00ffff";
-      ctx.strokeStyle = pc;
-      ctx.lineWidth = 2;
-      const top = cy - 170;
-      const bot = cy;
-      const left = cx - 50;
-      const width = 100;
-      const height = 170;
-      if (esp.settings.wireframe) {
-        ctx.strokeRect(left, top, width, height);
+    try {
+      const THREE = window.THREE;
+      previewScene = new THREE.Scene();
+      previewScene.background = new THREE.Color(986899);
+      previewCamera = new THREE.PerspectiveCamera(50, canvas.width / canvas.height, 0.1, 100);
+      previewCamera.position.set(0, 1.5, 3.5);
+      previewCamera.lookAt(0, 1, 0);
+      previewRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      previewRenderer.setSize(canvas.width, canvas.height);
+      previewRenderer.setPixelRatio(window.devicePixelRatio);
+      const ambientLight = new THREE.AmbientLight(16777215, 0.6);
+      previewScene.add(ambientLight);
+      const directionalLight = new THREE.DirectionalLight(16777215, 0.8);
+      directionalLight.position.set(5, 10, 5);
+      previewScene.add(directionalLight);
+      if (window.skinview3d?.PlayerObject) {
+        const PlayerObject = window.skinview3d.PlayerObject;
+        previewPlayerObject = new PlayerObject();
+        previewPlayerObject.position.set(0, 16, 0);
+        previewPlayerWrapper = new THREE.Group();
+        previewPlayerWrapper.add(previewPlayerObject);
+        const scale = 1 / 16;
+        previewPlayerWrapper.scale.set(scale, scale, scale);
+        previewPlayerWrapper.rotation.set(0, Math.PI, 0);
+        previewPlayerWrapper.position.set(0, 0, 0);
+        previewScene.add(previewPlayerWrapper);
       } else {
-        ctx.globalAlpha = 0.2;
-        ctx.fillStyle = pc;
-        ctx.fillRect(left, top, width, height);
-        ctx.globalAlpha = 1;
-        ctx.strokeRect(left, top, width, height);
+        const geometry = new THREE.BoxGeometry(0.6, 1.8, 0.6);
+        const material = new THREE.MeshStandardMaterial({ color: 8947848 });
+        const playerMesh = new THREE.Mesh(geometry, material);
+        playerMesh.position.set(0, 0.9, 0);
+        previewScene.add(playerMesh);
+        previewPlayerWrapper = playerMesh;
       }
-      ctx.fillStyle = "white";
-      ctx.font = "12px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("Steve", cx, top - 10);
+      const espGeometry = new THREE.BoxGeometry(0.6, 1.8, 0.6);
+      const espEdges = new THREE.EdgesGeometry(espGeometry);
+      const espMaterial = new THREE.LineBasicMaterial({ color: 65535, linewidth: 2 });
+      previewESPBox = new THREE.LineSegments(espEdges, espMaterial);
+      previewESPBox.position.set(0, 0.9, 0);
+      previewESPBox.visible = false;
+      previewScene.add(previewESPBox);
+      const storageGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+      const storageEdges = new THREE.EdgesGeometry(storageGeometry);
+      const storageMaterial = new THREE.LineBasicMaterial({ color: 16753920, linewidth: 2 });
+      previewStorageBox = new THREE.LineSegments(storageEdges, storageMaterial);
+      previewStorageBox.position.set(1.2, 0.15, 0);
+      previewStorageBox.visible = false;
+      previewScene.add(previewStorageBox);
+      return true;
+    } catch (err) {
+      console.error("[Anticlient] Failed to initialize 3D preview:", err);
+      return false;
     }
-    if (storageEsp && storageEsp.enabled) {
-      const sc = storageEsp.settings.color || "#FFA500";
-      const cxChest = cx + 80;
-      const cyChest = cy - 20;
-      ctx.fillStyle = "#654321";
-      ctx.fillRect(cxChest - 15, cyChest - 15, 30, 30);
-      ctx.strokeStyle = sc;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(cxChest - 15, cyChest - 15, 30, 30);
-      ctx.fillStyle = "white";
-      ctx.fillText("Chest", cxChest, cyChest - 20);
+  };
+  const render3DPreview = () => {
+    if (!previewRenderer || !previewScene || !previewCamera) return;
+    if (activeTab !== "Render") return;
+    const esp = modules["esp"];
+    if (esp && previewESPBox) {
+      previewESPBox.visible = esp.enabled;
+      if (esp.enabled) {
+        const color = esp.settings.playerColor || "#00ffff";
+        previewESPBox.material.color.setStyle(color);
+      }
+    }
+    const storageEsp = modules["storageesp"];
+    if (storageEsp && previewStorageBox) {
+      previewStorageBox.visible = storageEsp.enabled;
+      if (storageEsp.enabled) {
+        const color = storageEsp.settings.color || "#FFA500";
+        previewStorageBox.material.color.setStyle(color);
+      }
+    }
+    if (previewPlayerWrapper) {
+      previewPlayerWrapper.rotation.y += 0.01;
+    }
+    previewRenderer.render(previewScene, previewCamera);
+  };
+  const start3DPreview = () => {
+    if (!previewRenderer) {
+      if (!init3DPreview()) return;
+    }
+    const animate = () => {
+      if (activeTab !== "Render") {
+        previewAnimationId = null;
+        return;
+      }
+      render3DPreview();
+      previewAnimationId = requestAnimationFrame(animate);
+    };
+    animate();
+  };
+  const stop3DPreview = () => {
+    if (previewAnimationId) {
+      cancelAnimationFrame(previewAnimationId);
+      previewAnimationId = null;
     }
   };
   let previewInterval = null;
@@ -1401,15 +1449,11 @@ var initUI = () => {
     if (activeTab === "Render") {
       windowEl.classList.add("expanded");
       previewPanel.style.display = "flex";
-      if (!previewInterval) previewInterval = setInterval(drawSteve, 100);
-      requestAnimationFrame(drawSteve);
+      start3DPreview();
     } else {
       windowEl.classList.remove("expanded");
       previewPanel.style.display = "none";
-      if (previewInterval) {
-        clearInterval(previewInterval);
-        previewInterval = null;
-      }
+      stop3DPreview();
     }
   };
   const renderModules = () => {
@@ -1579,6 +1623,7 @@ var initUI = () => {
     });
   };
   const renderPackets = () => {
+    contentContainer.innerHTML = "";
     const packetViewer = modules["packetviewer"];
     if (!packetViewer) {
       const emptyMsg = document.createElement("div");
@@ -1674,7 +1719,8 @@ var initUI = () => {
       emptyMsg.style.marginTop = "20px";
       packetList.appendChild(emptyMsg);
     } else {
-      packetViewer.packets.forEach((packet) => {
+      const packetsToShow = packetViewer.packets.slice(0, 100);
+      packetsToShow.forEach((packet) => {
         const packetEl = document.createElement("div");
         packetEl.style.backgroundColor = "#1a1a20";
         packetEl.style.padding = "8px";
@@ -1780,6 +1826,15 @@ var initUI = () => {
     el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
   }
   return () => {
+    stop3DPreview();
+    if (previewRenderer) {
+      previewRenderer.dispose();
+      previewRenderer = null;
+    }
+    if (previewScene) {
+      previewScene.clear();
+      previewScene = null;
+    }
     if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot);
     if (style && style.parentNode) style.parentNode.removeChild(style);
     if (previewInterval) clearInterval(previewInterval);
