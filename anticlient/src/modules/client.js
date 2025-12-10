@@ -9,22 +9,69 @@ export const loadClientModules = () => {
         repo: 'Undertaker-afk/client-mods' // For display mainly
     })
 
-    // To handle special actions like "Unload" or "Update", we can treat them as boolean toggles that reset themselves
-    // or we'd ideally have a button widget. For now, we will add fake boolean toggles.
-    settings.settings.unloadClient = false
-    settings.settings.checkUpdates = false
+    // Store action handlers on the module for UI to call
+    settings.actions = {
+        update: async () => {
+            try {
+                // Try to update the mod using the mod system API
+                if (window.mcraft && window.mcraft.installModByName) {
+                    // Try to find the repository URL from all repositories
+                    let repoUrl = settings.settings.repo
+                    if (window.getAllRepositories) {
+                        try {
+                            const repos = await window.getAllRepositories()
+                            // Look for a repo that contains the anticlient mod
+                            const repo = repos.find(r => 
+                                r.packages && r.packages.some(p => p.name === 'anticlient')
+                            )
+                            if (repo) {
+                                repoUrl = repo.url
+                            } else {
+                                // Fallback: try GitHub slug format
+                                repoUrl = settings.settings.repo
+                            }
+                        } catch (e) {
+                            console.warn('Could not fetch repositories, using default:', e)
+                        }
+                    }
+                    await window.mcraft.installModByName(repoUrl, 'anticlient')
+                    // After update, the mod will need a reload - show notification
+                    if (window.mcraft && window.mcraft.showNotification) {
+                        window.mcraft.showNotification('Mod updated', 'Please reload the page to apply changes', false)
+                    } else {
+                        alert('Mod updated! Please reload the page to apply changes.')
+                    }
+                } else {
+                    // Fallback: open GitHub repo for manual update
+                    const repoUrl = 'https://github.com/' + settings.settings.repo
+                    window.open(repoUrl, '_blank')
+                    alert('Update API not available. Please use the Mod Manager UI to update, or visit the GitHub repository.')
+                }
+            } catch (error) {
+                console.error('Failed to update mod:', error)
+                alert('Failed to update mod: ' + (error.message || String(error)))
+            }
+        },
+        unload: async () => {
+            try {
+                // Use the mod system API to disable/unload the mod
+                if (window.mcraft && window.mcraft.setEnabledModAction) {
+                    const modName = 'anticlient'
+                    await window.mcraft.setEnabledModAction(modName, false)
+                } else {
+                    // Fallback: cleanup manually
+                    if (window.anticlient && window.anticlient.cleanup) {
+                        window.anticlient.cleanup()
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to unload mod:', error)
+                alert('Failed to unload mod: ' + error.message)
+            }
+        }
+    }
 
-    // We can monitor these settings in an interval or just on change (if we had an onChange hook per setting)
-    // Since we don't have individual setting callbacks yet, we can't easily trigger just on click without UI support for buttons.
-    // However, we can hack it: 
-
-    // We will inject logic into the toggle method to "intercept" the user creating this module interaction
-    // But this module is "passive". 
-
-    // Let's implement a loop check for these "Action" booleans in onTick, even though it's not a bot hack.
-    // But onTick runs often.
-
-    // Monitor changes
+    // Monitor theme changes
     let lastTheme = settings.settings.theme
 
     settings.onTick = (bot) => {
@@ -34,43 +81,6 @@ export const loadClientModules = () => {
             lastTheme = currentTheme
             if (window.anticlient && window.anticlient.ui && window.anticlient.ui.setTheme) {
                 window.anticlient.ui.setTheme(currentTheme)
-            }
-        }
-
-        // Handle Unload
-        if (settings.settings.unloadClient) {
-            settings.settings.unloadClient = false // Reset
-            // Use the mod system API to disable the mod
-            if (window.mcraft && window.mcraft.setEnabledModAction) {
-                // Assuming mod name is 'anticlient' (or derived from repo name)
-                const modName = 'Undertaker-afk/client-mods' // Adjust if needed
-                window.mcraft.setEnabledModAction(modName, false)
-            } else {
-                // Fallback
-                if (window.anticlient && window.anticlient.cleanup) {
-                    window.anticlient.cleanup()
-                }
-            }
-        }
-
-        // Handle Update Check
-        if (settings.settings.checkUpdates) {
-            settings.settings.checkUpdates = false // Reset
-            if (window.mcraft && window.mcraft.installOrUpdateMod && window.mcraft.activateMod) {
-                // Trigger self-update flow
-                // This usually requires re-fetching the repo config or file
-                // For now, simpler approach: Just open the UI mod page or trigger reload if supported
-                // window.location.reload() // Gross, but effective for hot-reload if files changed
-                console.log('Update requested via UI')
-                // If we have access to the specific update function:
-                // window.mcraft.callMethodAction('Undertaker-afk/client-mods', 'main', 'update')
-
-                // Simulating checking updates by logging for now as we lack direct handle to 'mod' object here easily
-                // unless we passed it down from loading.
-                alert('To update: Please use the Mod Manager UI update button for now.')
-            } else {
-                const repoUrl = 'https://github.com/' + settings.settings.repo
-                window.open(repoUrl, '_blank')
             }
         }
     }

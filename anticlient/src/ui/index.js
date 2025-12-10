@@ -438,37 +438,99 @@ export const initUI = () => {
                 settingsDiv.appendChild(row)
             })
 
-            // Bind Button
-            const bindRow = document.createElement('div')
-            bindRow.className = 'ac-setting-row'
-            const bindLabel = document.createElement('span')
-            bindLabel.textContent = 'Bind'
-            bindRow.appendChild(bindLabel)
-
-            const bindBtn = document.createElement('button')
-            bindBtn.style.background = '#333'
-            bindBtn.style.color = 'white'
-            bindBtn.style.border = '1px solid #444'
-            bindBtn.style.cursor = 'pointer'
-            bindBtn.textContent = mod.bind || 'None'
-            bindBtn.onclick = () => {
-                bindBtn.textContent = 'Press Key...'
-                const handler = (e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (e.code === 'Escape') {
-                        mod.bind = null
-                        bindBtn.textContent = 'None'
-                    } else {
-                        mod.bind = e.code
-                        bindBtn.textContent = e.code
+            // Special handling for Settings module: Add Update and Unload buttons, skip Bind
+            if (mod.id === 'client_settings') {
+                // Update button
+                if (mod.actions && mod.actions.update) {
+                    const updateRow = document.createElement('div')
+                    updateRow.className = 'ac-setting-row'
+                    const updateLabel = document.createElement('span')
+                    updateLabel.textContent = 'Update'
+                    updateRow.appendChild(updateLabel)
+                    const updateBtn = document.createElement('button')
+                    updateBtn.style.background = '#333'
+                    updateBtn.style.color = 'white'
+                    updateBtn.style.border = '1px solid #444'
+                    updateBtn.style.cursor = 'pointer'
+                    updateBtn.style.padding = '4px 12px'
+                    updateBtn.textContent = 'Update'
+                    updateBtn.onclick = async () => {
+                        updateBtn.disabled = true
+                        updateBtn.textContent = 'Updating...'
+                        try {
+                            await mod.actions.update()
+                        } catch (error) {
+                            console.error('Update failed:', error)
+                        } finally {
+                            updateBtn.disabled = false
+                            updateBtn.textContent = 'Update'
+                        }
                     }
-                    window.removeEventListener('keydown', handler, { capture: true })
+                    updateRow.appendChild(updateBtn)
+                    settingsDiv.appendChild(updateRow)
                 }
-                window.addEventListener('keydown', handler, { capture: true })
+
+                // Unload button
+                if (mod.actions && mod.actions.unload) {
+                    const unloadRow = document.createElement('div')
+                    unloadRow.className = 'ac-setting-row'
+                    const unloadLabel = document.createElement('span')
+                    unloadLabel.textContent = 'Unload'
+                    unloadRow.appendChild(unloadLabel)
+                    const unloadBtn = document.createElement('button')
+                    unloadBtn.style.background = '#333'
+                    unloadBtn.style.color = 'white'
+                    unloadBtn.style.border = '1px solid #444'
+                    unloadBtn.style.cursor = 'pointer'
+                    unloadBtn.style.padding = '4px 12px'
+                    unloadBtn.textContent = 'Unload'
+                    unloadBtn.onclick = async () => {
+                        unloadBtn.disabled = true
+                        unloadBtn.textContent = 'Unloading...'
+                        try {
+                            await mod.actions.unload()
+                        } catch (error) {
+                            console.error('Unload failed:', error)
+                            unloadBtn.disabled = false
+                            unloadBtn.textContent = 'Unload'
+                        }
+                    }
+                    unloadRow.appendChild(unloadBtn)
+                    settingsDiv.appendChild(unloadRow)
+                }
+            } else {
+                // Bind Button (for non-Settings modules)
+                const bindRow = document.createElement('div')
+                bindRow.className = 'ac-setting-row'
+                const bindLabel = document.createElement('span')
+                bindLabel.textContent = 'Bind'
+                bindRow.appendChild(bindLabel)
+
+                const bindBtn = document.createElement('button')
+                bindBtn.style.background = '#333'
+                bindBtn.style.color = 'white'
+                bindBtn.style.border = '1px solid #444'
+                bindBtn.style.cursor = 'pointer'
+                bindBtn.textContent = mod.bind || 'None'
+                bindBtn.onclick = () => {
+                    bindBtn.textContent = 'Press Key...'
+                    const handler = (e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (e.code === 'Escape') {
+                            mod.bind = null
+                            bindBtn.textContent = 'None'
+                        } else {
+                            mod.bind = e.code
+                            bindBtn.textContent = e.code
+                        }
+                        window.removeEventListener('keydown', handler, { capture: true })
+                    }
+                    window.addEventListener('keydown', handler, { capture: true })
+                }
+                bindRow.appendChild(bindBtn)
+                settingsDiv.appendChild(bindRow)
             }
-            bindRow.appendChild(bindBtn)
-            settingsDiv.appendChild(bindRow)
 
             modEl.appendChild(settingsDiv)
             contentContainer.appendChild(modEl)
