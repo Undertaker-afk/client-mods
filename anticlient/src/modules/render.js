@@ -93,6 +93,8 @@ export const loadRenderModules = () => {
         }
     }
     blockEsp.onTick = (bot) => {
+        if (!bot || !bot.entity || !bot.entity.position) return
+
         if (Date.now() - blockEsp.lastScan > 1000) {
             const log = window.anticlientLogger?.module('BlockESP')
 
@@ -133,15 +135,21 @@ export const loadRenderModules = () => {
         window.anticlient.visuals.storageEspSettings = storageEsp.settings
     }
     storageEsp.onTick = (bot) => {
+        if (!bot || !bot.entity || !bot.entity.position) return
+
         if (Date.now() - storageEsp.lastScan > 1000) {
-            // Periodic scan
-            const chests = bot.findBlocks({
-                matching: (block) => ['chest', 'ender_chest', 'trapped_chest', 'shulker_box', 'barrel', 'furnace'].some(n => block.name.includes(n)),
-                maxDistance: 64,
-                count: 100
-            })
-            if (window.anticlient?.visuals) {
-                window.anticlient.visuals.storageLocations = chests
+            try {
+                // Periodic scan
+                const chests = bot.findBlocks({
+                    matching: (block) => ['chest', 'ender_chest', 'trapped_chest', 'shulker_box', 'barrel', 'furnace'].some(n => block.name.includes(n)),
+                    maxDistance: 64,
+                    count: 100
+                })
+                if (window.anticlient?.visuals) {
+                    window.anticlient.visuals.storageLocations = chests
+                }
+            } catch (e) {
+                // Silently fail if bot not ready
             }
             storageEsp.lastScan = Date.now()
         }

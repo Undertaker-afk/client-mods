@@ -22,7 +22,7 @@ export const worldReady = (world) => {
     const parseColor = (str) => parseInt(str.replace('#', '0x'), 16)
 
     const update = () => {
-        if (!window.bot || !window.bot.entities) return
+        if (!window.bot || !window.bot.entities || !window.bot.entity || !window.bot.entity.position) return
 
         const settings = window.anticlient.visuals.espSettings || { playerColor: '#00ffff', mobColor: '#ff0000' }
         const pColor = parseColor(settings.playerColor)
