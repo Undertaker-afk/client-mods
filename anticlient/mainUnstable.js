@@ -122,13 +122,32 @@ var loadMovementModules = () => {
 var loadRenderModules = () => {
   const fullbright = new Module("fullbright", "Fullbright", "Render", "See in the dark", { gamma: 1 });
   registerModule(fullbright);
-  const esp = new Module("esp", "ESP", "Render", "See entities through walls", { color: "#00ff00" });
+  const esp = new Module("esp", "ESP", "Render", "See entities through walls", {
+    playerColor: "#00ffff",
+    mobColor: "#ff0000",
+    wireframe: true
+  });
   esp.onToggle = (enabled) => {
     if (!window.anticlient) window.anticlient = { visuals: {} };
     if (!window.anticlient.visuals) window.anticlient.visuals = {};
     window.anticlient.visuals.esp = enabled;
+    window.anticlient.visuals.espSettings = esp.settings;
   };
+  esp.settings = new Proxy(esp.settings, {
+    set: (target, prop, value) => {
+      target[prop] = value;
+      if (window.anticlient?.visuals) window.anticlient.visuals.espSettings = target;
+      return true;
+    }
+  });
   registerModule(esp);
+  const tracers = new Module("tracers", "Tracers", "Render", "Draw lines to entities", { color: "#ffffff" });
+  tracers.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.tracers = enabled;
+  };
+  registerModule(tracers);
 };
 
 // anticlient/src/modules/player.js
@@ -178,7 +197,10 @@ var initUI = () => {
         background-color: #0f0f13;
         border: 2px solid #7c4dff;
         border-radius: 8px;
-        width: 450px;
+        border-radius: 8px;
+        width: 600px;
+        box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
+        color: #e0e0e0;
         box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
         color: #e0e0e0;
         display: flex;
@@ -350,6 +372,16 @@ var initUI = () => {
           input.checked = val;
           input.onchange = (e) => mod.settings[key] = e.target.checked;
           row.appendChild(input);
+        } else if (typeof val === "string" && val.startsWith("#")) {
+          const input = document.createElement("input");
+          input.type = "color";
+          input.style.background = "none";
+          input.style.border = "none";
+          input.style.width = "30px";
+          input.style.height = "30px";
+          input.value = val;
+          input.onchange = (e) => mod.settings[key] = e.target.value;
+          row.appendChild(input);
         } else {
           const input = document.createElement("input");
           input.value = val;
@@ -361,6 +393,34 @@ var initUI = () => {
         }
         settingsDiv.appendChild(row);
       });
+      if (mod.id === "esp") {
+        const previewRow = document.createElement("div");
+        previewRow.style.display = "flex";
+        previewRow.style.justifyContent = "center";
+        previewRow.style.padding = "10px";
+        previewRow.style.marginTop = "5px";
+        previewRow.style.background = "#111";
+        previewRow.style.border = "1px dashed #333";
+        const canvas = document.createElement("canvas");
+        canvas.width = 200;
+        canvas.height = 100;
+        previewRow.appendChild(canvas);
+        const ctx = canvas.getContext("2d");
+        const drawPreview = () => {
+          if (!ctx) return;
+          ctx.clearRect(0, 0, 200, 100);
+          ctx.strokeStyle = mod.settings.playerColor;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(30, 20, 40, 60);
+          ctx.fillStyle = "white";
+          ctx.fillText("Player", 30, 90);
+          ctx.strokeStyle = mod.settings.mobColor;
+          ctx.strokeRect(130, 30, 40, 40);
+          ctx.fillText("Mob", 135, 90);
+        };
+        setInterval(drawPreview, 200);
+        settingsDiv.appendChild(previewRow);
+      }
       const bindRow = document.createElement("div");
       bindRow.className = "ac-setting-row";
       const bindLabel = document.createElement("span");

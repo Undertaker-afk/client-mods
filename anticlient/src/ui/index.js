@@ -38,7 +38,10 @@ export const initUI = () => {
         background-color: #0f0f13;
         border: 2px solid #7c4dff;
         border-radius: 8px;
-        width: 450px;
+        border-radius: 8px;
+        width: 600px;
+        box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
+        color: #e0e0e0;
         box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
         color: #e0e0e0;
         display: flex;
@@ -222,6 +225,16 @@ export const initUI = () => {
                     input.checked = val
                     input.onchange = (e) => mod.settings[key] = e.target.checked
                     row.appendChild(input)
+                } else if (typeof val === 'string' && val.startsWith('#')) {
+                    const input = document.createElement('input')
+                    input.type = 'color'
+                    input.style.background = 'none'
+                    input.style.border = 'none'
+                    input.style.width = '30px'
+                    input.style.height = '30px'
+                    input.value = val
+                    input.onchange = (e) => mod.settings[key] = e.target.value
+                    row.appendChild(input)
                 } else {
                     const input = document.createElement('input')
                     input.value = val
@@ -233,6 +246,48 @@ export const initUI = () => {
                 }
                 settingsDiv.appendChild(row)
             })
+
+            // Special Preview for ESP
+            if (mod.id === 'esp') {
+                const previewRow = document.createElement('div')
+                previewRow.style.display = 'flex'
+                previewRow.style.justifyContent = 'center'
+                previewRow.style.padding = '10px'
+                previewRow.style.marginTop = '5px'
+                previewRow.style.background = '#111'
+                previewRow.style.border = '1px dashed #333'
+
+                const canvas = document.createElement('canvas')
+                canvas.width = 200
+                canvas.height = 100
+                previewRow.appendChild(canvas)
+
+                const ctx = canvas.getContext('2d')
+                const drawPreview = () => {
+                    if (!ctx) return
+                    ctx.clearRect(0, 0, 200, 100)
+
+                    // Player Box
+                    ctx.strokeStyle = mod.settings.playerColor
+                    ctx.lineWidth = 2
+                    ctx.strokeRect(30, 20, 40, 60)
+                    ctx.fillStyle = 'white'
+                    ctx.fillText('Player', 30, 90)
+
+                    // Mob Box
+                    ctx.strokeStyle = mod.settings.mobColor
+                    ctx.strokeRect(130, 30, 40, 40)
+                    ctx.fillText('Mob', 135, 90)
+                }
+
+                // Hacky hook to update preview when settings change
+                // We'll just interval it for now or hook into inputs? 
+                // Let's hook into the inputs we just created above by walking DOM?
+                // Better: interval is cheap for preview
+                setInterval(drawPreview, 200)
+
+                settingsDiv.appendChild(previewRow)
+            }
 
             // Bind Button
             const bindRow = document.createElement('div')

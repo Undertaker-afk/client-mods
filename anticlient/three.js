@@ -4,66 +4,98 @@ export const worldReady = (world) => {
 
     // Shared State with UI
     window.anticlient = window.anticlient || {}
-    window.anticlient.visuals = {
-        esp: false,
-        tracers: false,
-        chams: false
-    }
+    // Ensure structure exists
+    if (!window.anticlient.visuals) window.anticlient.visuals = { esp: false, tracers: false }
 
     const meshes = new Map() // ID -> THREE.Object3D (BoxHelper)
     const tracerLines = new Map() // ID -> THREE.Line
 
     const material = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true })
-    const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, depthTest: false, transparent: true })
+    const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true })
 
-    // Hook into render loop
-    // Assuming 'beforeRenderFrame' is available globally as per globals.d.ts
-    // or we can use requestAnimationFrame loop if global is not working, but let's try pushing to array first
+    // Helper to get hex from string
+    const parseColor = (str) => parseInt(str.replace('#', '0x'), 16)
 
     const update = () => {
         if (!window.bot || !window.bot.entities) return
 
-        // --- ESP ---
-        if (window.anticlient.visuals.esp) {
+        const settings = window.anticlient.visuals.espSettings || { playerColor: '#00ffff', mobColor: '#ff0000' }
+        const pColor = parseColor(settings.playerColor)
+        const mColor = parseColor(settings.mobColor)
+
+        const center = new THREE.Vector3(0, 0, -1).applyQuaternion(window.bot.entity.quaternion || new THREE.Quaternion()).add(window.bot.entity.position.offset(0, 1.62, 0))
+
+        // Reuse loop for both ESP and Tracers
+        const activeEsp = window.anticlient.visuals.esp
+        const activeTracers = window.anticlient.visuals.tracers
+
+        if (activeEsp || activeTracers) {
             for (const [id, entity] of Object.entries(window.bot.entities)) {
                 if (entity === window.bot.entity) continue
                 if (entity.type !== 'player' && entity.type !== 'mob') continue
 
-                // Get Position
                 const pos = entity.position
 
-                // Create Box if needed
-                if (!meshes.has(id)) {
-                    // Create a wireframe box
-                    // Width 0.6, Height 1.8 (approx player)
-                    const w = 0.6
-                    const h = 1.8
-                    const geometry = new THREE.BoxGeometry(w, h, w)
-                    const edges = new THREE.EdgesGeometry(geometry)
-                    const line = new THREE.LineSegments(edges, material)
-                    line.frustumCulled = false
-                    world.scene.add(line)
-                    meshes.set(id, line)
+                // Color Logic
+                let color = (entity.type === 'player') ? pColor : mColor
+
+                // --- ESP ---
+                if (activeEsp) {
+                    if (!meshes.has(id)) {
+                        const w = 0.6
+                        const h = 1.8
+                        const geometry = new THREE.BoxGeometry(w, h, w)
+                        const edges = new THREE.EdgesGeometry(geometry)
+                        const line = new THREE.LineSegments(edges, material.clone())
+                        line.frustumCulled = false
+                        world.scene.add(line)
+                        meshes.set(id, line)
+                    }
+                    const mesh = meshes.get(id)
+                    mesh.visible = true
+                    mesh.position.set(pos.x, pos.y + 1.8 / 2, pos.z)
+                    mesh.material.color.setHex(color)
+                } else {
+                    if (meshes.has(id)) meshes.get(id).visible = false
                 }
 
-                // Update Position
-                const mesh = meshes.get(id)
-                mesh.visible = true
-                // Interpolated position would be better, but raw position for now
-                mesh.position.set(pos.x, pos.y + 1.8 / 2, pos.z)
+                // --- Tracers ---
+                if (activeTracers) {
+                    if (!tracerLines.has(id)) {
+                        const points = [new THREE.Vector3(), new THREE.Vector3()]
+                        const geometry = new THREE.BufferGeometry().setFromPoints(points)
+                        const line = new THREE.Line(geometry, tracerMaterial.clone())
+                        line.frustumCulled = false
+                        world.scene.add(line)
+                        tracerLines.set(id, line)
+                    }
+                    const line = tracerLines.get(id)
+                    line.visible = true
 
-                // Color based on type?
-                if (entity.type === 'player') mesh.material.color.setHex(0x00ffff) // Cyan for players
-                else mesh.material.color.setHex(0xff0000) // Red for mobs
+                    // Start from screen center (camera forward vector logic slightly complex here without direct cam access, 
+                    // usually tracers go from crosshair (cam position + forward) to entity)
+                    // Simplified: Start from bot head
+                    const headPos = window.bot.entity.position.offset(0, 1.62, 0)
+
+                    // We need to update geometry positions
+                    const positions = line.geometry.attributes.position.array
+                    positions[0] = headPos.x; positions[1] = headPos.y; positions[2] = headPos.z
+                    positions[3] = pos.x; positions[4] = pos.y + 0.9; positions[5] = pos.z // to center of body
+                    line.geometry.attributes.position.needsUpdate = true
+
+                    line.material.color.setHex(color)
+
+                } else {
+                    if (tracerLines.has(id)) tracerLines.get(id).visible = false
+                }
             }
         } else {
             // Hide all
             for (const mesh of meshes.values()) mesh.visible = false
+            for (const line of tracerLines.values()) line.visible = false
         }
 
-        // --- Cleanup Stale Meshes ---
-        // Simple cleanup: if entity not in bot.entities list, remove
-        // Not implemented fully efficiently here to save tokens, but good enough
+        // Cleanup
         for (const id of meshes.keys()) {
             if (!window.bot.entities[id]) {
                 const mesh = meshes.get(id)
@@ -71,12 +103,18 @@ export const worldReady = (world) => {
                 meshes.delete(id)
             }
         }
+        for (const id of tracerLines.keys()) {
+            if (!window.bot.entities[id]) {
+                const line = tracerLines.get(id)
+                world.scene.remove(line)
+                tracerLines.delete(id)
+            }
+        }
     }
 
     if (window.beforeRenderFrame) {
         window.beforeRenderFrame.push(update)
     } else {
-        // Fallback loop
         const loop = () => {
             update()
             requestAnimationFrame(loop)
