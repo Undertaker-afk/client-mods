@@ -76,7 +76,9 @@ export const loadPlayerModules = () => {
     // -- Inventory Sorter --
     const inventorySorter = new Module('inventorysorter', 'Inventory Sorter', 'Player', 'Auto-organize inventory', {
         enabled: false,
-        sortBy: 'type' // 'type' | 'value'
+        sortBy: 'type'
+    }, {
+        sortBy: { type: 'dropdown', options: ['type', 'value'] }
     })
     let sorting = false
     inventorySorter.onTick = async (bot) => {

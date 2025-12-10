@@ -1,6 +1,6 @@
 
 export class Module {
-    constructor(id, name, category, description, defaultSettings = {}) {
+    constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
         this.id = id
         this.name = name
         this.category = category
@@ -8,6 +8,7 @@ export class Module {
         this.enabled = false
         this.bind = null
         this.uiElement = null
+        this.settingsMetadata = settingsMetadata // { settingKey: { type: 'dropdown', options: [...] } }
 
         // Wrap settings in a Proxy to detect changes
         this.settings = new Proxy(defaultSettings, {

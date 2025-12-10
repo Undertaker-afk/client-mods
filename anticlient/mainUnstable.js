@@ -1,6 +1,6 @@
 // anticlient/src/core/Module.js
 var Module = class {
-  constructor(id, name, category, description, defaultSettings = {}) {
+  constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
     this.id = id;
     this.name = name;
     this.category = category;
@@ -8,6 +8,7 @@ var Module = class {
     this.enabled = false;
     this.bind = null;
     this.uiElement = null;
+    this.settingsMetadata = settingsMetadata;
     this.settings = new Proxy(defaultSettings, {
       set: (target, prop, value) => {
         const oldValue = target[prop];
@@ -277,7 +278,8 @@ var loadMovementModules = () => {
     groundSpeedMultiplier: 1.5,
     airSpeedMultiplier: 1.2,
     mode: "strafe"
-    // 'strafe' | 'forward'
+  }, {
+    mode: { type: "dropdown", options: ["strafe", "forward"] }
   });
   speed.onTick = (bot) => {
     const controlStates = [
@@ -429,10 +431,8 @@ var loadMovementModules = () => {
   const blink = new Module("blink", "Blink", "Movement", "Record positions and teleport back", {
     recordInterval: 50,
     // ms between position recordings
-    maxRecordTime: 1e4,
+    maxRecordTime: 1e4
     // 10 seconds max
-    holdKey: "KeyB"
-    // Key to hold for recording
   });
   let positionHistory = [];
   let isRecording = false;
@@ -472,7 +472,7 @@ var loadMovementModules = () => {
   };
   window.addEventListener("keydown", (e) => {
     if (!blink.enabled || !window.bot) return;
-    if (e.code === blink.settings.holdKey && !isRecording) {
+    if (e.code === blink.bind && !isRecording) {
       const log = window.anticlientLogger?.module("Blink");
       isRecording = true;
       recordStartPos = window.bot.entity.position.clone();
@@ -493,7 +493,7 @@ var loadMovementModules = () => {
   });
   window.addEventListener("keyup", (e) => {
     if (!blink.enabled || !window.bot) return;
-    if (e.code === blink.settings.holdKey && isRecording) {
+    if (e.code === blink.bind && isRecording) {
       const log = window.anticlientLogger?.module("Blink");
       isRecording = false;
       if (recordStartPos && positionHistory.length > 0) {
@@ -781,7 +781,8 @@ var loadPlayerModules = () => {
   const inventorySorter = new Module("inventorysorter", "Inventory Sorter", "Player", "Auto-organize inventory", {
     enabled: false,
     sortBy: "type"
-    // 'type' | 'value'
+  }, {
+    sortBy: { type: "dropdown", options: ["type", "value"] }
   });
   let sorting = false;
   inventorySorter.onTick = async (bot) => {
@@ -1035,7 +1036,8 @@ var loadWorldModules = () => {
     range: 4,
     filter: [],
     mode: "all"
-    // 'all' | 'filter'
+  }, {
+    mode: { type: "dropdown", options: ["all", "filter"] }
   });
   nuker.onTick = (bot) => {
     if (bot.targetDigBlock) return;
@@ -1122,14 +1124,14 @@ var loadWorldModules = () => {
   });
   registerModule(xray);
   const autoMine = new Module("automine", "Auto Mine", "World", "Automatically mine target blocks", {
-    targetBlocks: ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore"],
+    blocks: ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore"],
     range: 16,
     pathfind: false
   });
   autoMine.onTick = (bot) => {
     if (bot.targetDigBlock) return;
     const target = bot.findBlock({
-      matching: (block) => autoMine.settings.targetBlocks.some((name) => block.name.includes(name)),
+      matching: (block) => autoMine.settings.blocks.some((name) => block.name.includes(name)),
       maxDistance: autoMine.settings.range
     });
     if (target) {
@@ -1916,6 +1918,7 @@ var initUI = () => {
         const label = document.createElement("span");
         label.textContent = key;
         row.appendChild(label);
+        const metadata = mod.settingsMetadata?.[key];
         if (key === "logLevel" && mod.id === "loggersettings") {
           const select = document.createElement("select");
           select.style.background = "#1a1a20";
@@ -1940,6 +1943,25 @@ var initUI = () => {
           });
           select.onchange = (e) => {
             mod.settings[key] = parseInt(e.target.value);
+          };
+          row.appendChild(select);
+        } else if (metadata?.type === "dropdown" && metadata.options) {
+          const select = document.createElement("select");
+          select.style.background = "#1a1a20";
+          select.style.color = "white";
+          select.style.border = "1px solid #444";
+          select.style.padding = "4px";
+          select.style.borderRadius = "4px";
+          select.style.cursor = "pointer";
+          metadata.options.forEach((option) => {
+            const optionEl = document.createElement("option");
+            optionEl.value = option;
+            optionEl.textContent = option;
+            optionEl.selected = val === option;
+            select.appendChild(optionEl);
+          });
+          select.onchange = (e) => {
+            mod.settings[key] = e.target.value;
           };
           row.appendChild(select);
         } else if (typeof val === "number") {
@@ -2437,8 +2459,8 @@ var entry_default = (mod) => {
     "Logger Settings",
     "Settings",
     "Configure logging level (0=Debug, 1=Info, 2=Warning, 3=Error, 4=None)",
-    { logLevel: 1 }
-    // INFO by default
+    { logLevel: 0 }
+    // DEBUG by default
   );
   loggerSettings.enabled = true;
   loggerSettings.onToggle = () => {

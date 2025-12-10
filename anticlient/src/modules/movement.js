@@ -37,10 +37,12 @@ export const loadMovementModules = () => {
     registerModule(flight)
 
     // -- Speed (Enhanced with Strafe) --
-    const speed = new Module('speed', 'Speed', 'Movement', 'Moves faster on ground', { 
+    const speed = new Module('speed', 'Speed', 'Movement', 'Moves faster on ground', {
         groundSpeedMultiplier: 1.5,
         airSpeedMultiplier: 1.2,
-        mode: 'strafe' // 'strafe' | 'forward'
+        mode: 'strafe'
+    }, {
+        mode: { type: 'dropdown', options: ['strafe', 'forward'] }
     })
     speed.onTick = (bot) => {
         const controlStates = [
@@ -225,8 +227,7 @@ export const loadMovementModules = () => {
     // -- Blink/Backtrack --
     const blink = new Module('blink', 'Blink', 'Movement', 'Record positions and teleport back', {
         recordInterval: 50, // ms between position recordings
-        maxRecordTime: 10000, // 10 seconds max
-        holdKey: 'KeyB' // Key to hold for recording
+        maxRecordTime: 10000 // 10 seconds max
     })
 
     let positionHistory = [] // Array of {pos, time}
@@ -279,7 +280,7 @@ export const loadMovementModules = () => {
     window.addEventListener('keydown', (e) => {
         if (!blink.enabled || !window.bot) return
 
-        if (e.code === blink.settings.holdKey && !isRecording) {
+        if (e.code === blink.bind && !isRecording) {
             const log = window.anticlientLogger?.module('Blink')
             isRecording = true
             recordStartPos = window.bot.entity.position.clone()
@@ -304,7 +305,7 @@ export const loadMovementModules = () => {
     window.addEventListener('keyup', (e) => {
         if (!blink.enabled || !window.bot) return
 
-        if (e.code === blink.settings.holdKey && isRecording) {
+        if (e.code === blink.bind && isRecording) {
             const log = window.anticlientLogger?.module('Blink')
             isRecording = false
 

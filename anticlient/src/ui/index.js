@@ -704,6 +704,9 @@ export const initUI = () => {
                 label.textContent = key
                 row.appendChild(label)
 
+                // Check if this setting has dropdown metadata
+                const metadata = mod.settingsMetadata?.[key]
+
                 // Special handling for logLevel (dropdown)
                 if (key === 'logLevel' && mod.id === 'loggersettings') {
                     const select = document.createElement('select')
@@ -732,6 +735,29 @@ export const initUI = () => {
 
                     select.onchange = (e) => {
                         mod.settings[key] = parseInt(e.target.value)
+                    }
+
+                    row.appendChild(select)
+                } else if (metadata?.type === 'dropdown' && metadata.options) {
+                    // Generic dropdown support
+                    const select = document.createElement('select')
+                    select.style.background = '#1a1a20'
+                    select.style.color = 'white'
+                    select.style.border = '1px solid #444'
+                    select.style.padding = '4px'
+                    select.style.borderRadius = '4px'
+                    select.style.cursor = 'pointer'
+
+                    metadata.options.forEach(option => {
+                        const optionEl = document.createElement('option')
+                        optionEl.value = option
+                        optionEl.textContent = option
+                        optionEl.selected = val === option
+                        select.appendChild(optionEl)
+                    })
+
+                    select.onchange = (e) => {
+                        mod.settings[key] = e.target.value
                     }
 
                     row.appendChild(select)

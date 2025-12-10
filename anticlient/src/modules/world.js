@@ -3,10 +3,12 @@ import { Module, registerModule } from '../core/Module.js'
 
 export const loadWorldModules = () => {
     // -- Nuker (Enhanced) --
-    const nuker = new Module('nuker', 'Nuker', 'World', 'Break blocks around you', { 
+    const nuker = new Module('nuker', 'Nuker', 'World', 'Break blocks around you', {
         range: 4,
         filter: [],
-        mode: 'all' // 'all' | 'filter'
+        mode: 'all'
+    }, {
+        mode: { type: 'dropdown', options: ['all', 'filter'] }
     })
     nuker.onTick = (bot) => {
         if (bot.targetDigBlock) return // Already digging
@@ -108,15 +110,15 @@ export const loadWorldModules = () => {
 
     // -- Auto-Mine --
     const autoMine = new Module('automine', 'Auto Mine', 'World', 'Automatically mine target blocks', {
-        targetBlocks: ['diamond_ore', 'gold_ore', 'iron_ore', 'emerald_ore'],
+        blocks: ['diamond_ore', 'gold_ore', 'iron_ore', 'emerald_ore'],
         range: 16,
         pathfind: false
     })
     autoMine.onTick = (bot) => {
         if (bot.targetDigBlock) return // Already mining
-        
+
         const target = bot.findBlock({
-            matching: (block) => autoMine.settings.targetBlocks.some(name => block.name.includes(name)),
+            matching: (block) => autoMine.settings.blocks.some(name => block.name.includes(name)),
             maxDistance: autoMine.settings.range
         })
         
