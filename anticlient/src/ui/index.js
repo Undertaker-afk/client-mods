@@ -44,6 +44,7 @@ export const initUI = () => {
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        height: 400px; /* Fixed height */
     }
     .ac-header {
         background-color: #1a1a20;
@@ -87,7 +88,7 @@ export const initUI = () => {
     }
     .ac-content {
         padding: 15px;
-        max-height: 400px;
+        flex: 1; /* Fill remaining space */
         overflow-y: auto;
         background-color: #0f0f13;
     }
