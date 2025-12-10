@@ -32,13 +32,15 @@ var categories = {
   "Player": [],
   "World": [],
   "Client": [],
-  "Packets": []
+  "Packets": [],
+  "Settings": []
 };
 var modules = {};
 var registerModule = (module) => {
   if (!categories[module.category]) categories[module.category] = [];
   categories[module.category].push(module);
   modules[module.id] = module;
+  return module;
 };
 
 // anticlient/src/modules/combat.js

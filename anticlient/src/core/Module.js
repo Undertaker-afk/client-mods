@@ -32,7 +32,8 @@ export const categories = {
     'Player': [],
     'World': [],
     'Client': [],
-    'Packets': []
+    'Packets': [],
+    'Settings': []
 }
 
 export const modules = {}
@@ -41,4 +42,5 @@ export const registerModule = (module) => {
     if (!categories[module.category]) categories[module.category] = []
     categories[module.category].push(module)
     modules[module.id] = module
+    return module
 }
