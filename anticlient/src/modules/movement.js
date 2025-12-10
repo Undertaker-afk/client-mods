@@ -59,7 +59,7 @@ export const loadMovementModules = () => {
     // -- Spider --
     const spider = new Module('spider', 'Spider', 'Movement', 'Climb walls', {})
     spider.onTick = (bot) => {
-        if (bot.entity.isCollidedHorizontally) {
+        if (bot.entity && bot.entity.isCollidedHorizontally) {
             bot.entity.velocity.y = 0.2
         }
     }

@@ -122,7 +122,7 @@ var loadMovementModules = () => {
   registerModule(step);
   const spider = new Module("spider", "Spider", "Movement", "Climb walls", {});
   spider.onTick = (bot) => {
-    if (bot.entity.isCollidedHorizontally) {
+    if (bot.entity && bot.entity.isCollidedHorizontally) {
       bot.entity.velocity.y = 0.2;
     }
   };
@@ -255,6 +255,10 @@ var loadWorldModules = () => {
 
 // anticlient/src/ui/index.js
 var initUI = () => {
+  const existingRoot = document.getElementById("anticlient-root");
+  if (existingRoot) existingRoot.remove();
+  const existingStyle = document.getElementById("anticlient-style");
+  if (existingStyle) existingStyle.remove();
   const uiRoot = document.createElement("div");
   uiRoot.id = "anticlient-root";
   uiRoot.style.position = "fixed";
@@ -267,7 +271,7 @@ var initUI = () => {
   const toggleUi = () => {
     uiRoot.style.display = uiRoot.style.display === "none" ? "block" : "none";
   };
-  window.addEventListener("keydown", (e) => {
+  const keydownHandler = (e) => {
     if (e.code === "ShiftRight" && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
       toggleUi();
     }
@@ -278,23 +282,22 @@ var initUI = () => {
         }
       });
     }
-  });
+  };
+  window.addEventListener("keydown", keydownHandler);
   const style = document.createElement("style");
+  style.id = "anticlient-style";
   style.textContent = `
     .ac-window {
         background-color: #0f0f13;
         border: 2px solid #7c4dff;
         border-radius: 8px;
-        border-radius: 8px;
         width: 600px;
-        box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
-        color: #e0e0e0;
         box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
         color: #e0e0e0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        height: 400px; /* Fixed height */
+        height: 400px;
     }
     .ac-header {
         background-color: #1a1a20;
@@ -338,7 +341,7 @@ var initUI = () => {
     }
     .ac-content {
         padding: 15px;
-        flex: 1; /* Fill remaining space */
+        flex: 1; 
         overflow-y: auto;
         background-color: #0f0f13;
     }
@@ -593,19 +596,35 @@ var initUI = () => {
   function setTranslate(xPos, yPos, el) {
     el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
   }
+  return () => {
+    if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot);
+    if (style && style.parentNode) style.parentNode.removeChild(style);
+    window.removeEventListener("keydown", keydownHandler);
+    window.removeEventListener("mouseup", dragEnd);
+    window.removeEventListener("mousemove", drag);
+  };
 };
 
 // anticlient/entry.js
 var entry_default = (mod) => {
+  if (window.anticlient && window.anticlient.cleanup) {
+    try {
+      window.anticlient.cleanup();
+    } catch (e) {
+      console.error(e);
+    }
+  }
   console.log("[Anticlient] Initializing Modular Architecture...");
   loadCombatModules();
   loadMovementModules();
   loadRenderModules();
   loadPlayerModules();
   loadWorldModules();
-  initUI();
+  const cleanupUI = initUI();
   let bot = void 0;
+  let loopRunning = true;
   const loop = () => {
+    if (!loopRunning) return;
     if (!bot && window.bot) bot = window.bot;
     if (bot) {
       Object.values(modules).forEach((mod2) => {
@@ -615,6 +634,12 @@ var entry_default = (mod) => {
     requestAnimationFrame(loop);
   };
   loop();
+  if (!window.anticlient) window.anticlient = {};
+  window.anticlient.cleanup = () => {
+    cleanupUI();
+    loopRunning = false;
+    console.log("[Anticlient] Cleaned up.");
+  };
 };
 export {
   entry_default as default
