@@ -2752,17 +2752,31 @@ var initUI = () => {
       fakeLagSection.style.backgroundColor = "#1a1a20";
       fakeLagSection.style.borderRadius = "6px";
       fakeLagSection.style.border = "1px solid #333";
+      let isCollapsed = localStorage.getItem("fakeLagCollapsed") === "true";
       const fakeLagHeader = document.createElement("div");
       fakeLagHeader.style.display = "flex";
       fakeLagHeader.style.justifyContent = "space-between";
       fakeLagHeader.style.alignItems = "center";
       fakeLagHeader.style.marginBottom = "10px";
+      fakeLagHeader.style.cursor = "pointer";
+      fakeLagHeader.style.userSelect = "none";
+      const titleContainer = document.createElement("div");
+      titleContainer.style.display = "flex";
+      titleContainer.style.alignItems = "center";
+      titleContainer.style.gap = "8px";
+      const collapseIcon = document.createElement("span");
+      collapseIcon.textContent = isCollapsed ? "\u25B6" : "\u25BC";
+      collapseIcon.style.color = "#888";
+      collapseIcon.style.fontSize = "12px";
+      collapseIcon.style.transition = "transform 0.2s";
+      titleContainer.appendChild(collapseIcon);
       const fakeLagTitle = document.createElement("h3");
       fakeLagTitle.textContent = "\u{1F310} Fake Lag / Packet Delay";
       fakeLagTitle.style.margin = "0";
       fakeLagTitle.style.color = "#00ffff";
       fakeLagTitle.style.fontSize = "16px";
-      fakeLagHeader.appendChild(fakeLagTitle);
+      titleContainer.appendChild(fakeLagTitle);
+      fakeLagHeader.appendChild(titleContainer);
       const fakeLagToggle = document.createElement("button");
       fakeLagToggle.textContent = fakeLag.enabled ? "Disable" : "Enable";
       fakeLagToggle.style.padding = "6px 16px";
@@ -2779,6 +2793,19 @@ var initUI = () => {
       };
       fakeLagHeader.appendChild(fakeLagToggle);
       fakeLagSection.appendChild(fakeLagHeader);
+      const contentDiv = document.createElement("div");
+      contentDiv.style.overflow = "hidden";
+      contentDiv.style.transition = "max-height 0.3s ease-out, opacity 0.3s ease-out";
+      contentDiv.style.opacity = isCollapsed ? "0" : "1";
+      contentDiv.style.maxHeight = isCollapsed ? "0px" : "1000px";
+      fakeLagHeader.onclick = (e) => {
+        if (e.target === fakeLagToggle) return;
+        isCollapsed = !isCollapsed;
+        localStorage.setItem("fakeLagCollapsed", isCollapsed);
+        collapseIcon.textContent = isCollapsed ? "\u25B6" : "\u25BC";
+        contentDiv.style.maxHeight = isCollapsed ? "0px" : "1000px";
+        contentDiv.style.opacity = isCollapsed ? "0" : "1";
+      };
       const settingsGrid = document.createElement("div");
       settingsGrid.style.display = "grid";
       settingsGrid.style.gridTemplateColumns = "1fr 1fr";
@@ -2846,7 +2873,7 @@ var initUI = () => {
       const filterRow = createSetting("Packet Filter (comma separated)", "text", "packetFilter", { placeholder: "position,look,chat" });
       filterRow.style.gridColumn = "1 / -1";
       settingsGrid.appendChild(filterRow);
-      fakeLagSection.appendChild(settingsGrid);
+      contentDiv.appendChild(settingsGrid);
       if (fakeLag.settings.burstMode && fakeLag.enabled) {
         const burstStatus = document.createElement("div");
         burstStatus.id = "burst-status";
@@ -2882,7 +2909,7 @@ var initUI = () => {
         burstStatus.appendChild(createStatusItem("Queue Size", "0", "#00ffff"));
         burstStatus.appendChild(createStatusItem("Outgoing Queue", "0", "#00ff00"));
         burstStatus.appendChild(createStatusItem("Incoming Queue", "0", "#ff00ff"));
-        fakeLagSection.appendChild(burstStatus);
+        contentDiv.appendChild(burstStatus);
         const updateBurstStatus = () => {
           if (!fakeLag.enabled || !fakeLag.settings.burstMode) {
             const existingStatus = document.getElementById("burst-status");
@@ -2907,6 +2934,7 @@ var initUI = () => {
         };
         updateBurstStatus();
       }
+      fakeLagSection.appendChild(contentDiv);
       contentContainer.appendChild(fakeLagSection);
     }
     const packetViewer = modules["packetviewer"];
