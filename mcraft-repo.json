@@ -26,7 +26,7 @@
         },
         {
             "name": "anticlient",
-            "version": "1.0.0",
+            "version": "1.0.1",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
             "description": "Hacked client for 2b2t"
