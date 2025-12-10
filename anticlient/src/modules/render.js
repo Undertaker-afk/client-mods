@@ -93,12 +93,18 @@ export const loadRenderModules = () => {
         }
     }
     blockEsp.onTick = (bot) => {
-        if (!bot || !bot.entity || !bot.entity.position) return
+        if (!bot || !bot.entity || !bot.entity.position || !bot.findBlocks) return
 
         if (Date.now() - blockEsp.lastScan > 1000) {
             const log = window.anticlientLogger?.module('BlockESP')
 
             try {
+                // Additional safety check
+                if (!bot.entity || !bot.entity.position) {
+                    blockEsp.lastScan = Date.now()
+                    return
+                }
+
                 const blocks = bot.findBlocks({
                     matching: (block) => blockEsp.settings.blocks.some(name => block.name.includes(name)),
                     maxDistance: blockEsp.settings.range,
@@ -111,7 +117,8 @@ export const loadRenderModules = () => {
                     window.anticlient.visuals.blockEspLocations = blocks
                 }
             } catch (e) {
-                if (log) log.error('Error scanning for blocks:', e)
+                // Silently fail - bot not ready yet
+                if (log && log.level <= 0) log.debug('Bot not ready for block scanning')
             }
 
             blockEsp.lastScan = Date.now()
@@ -135,10 +142,16 @@ export const loadRenderModules = () => {
         window.anticlient.visuals.storageEspSettings = storageEsp.settings
     }
     storageEsp.onTick = (bot) => {
-        if (!bot || !bot.entity || !bot.entity.position) return
+        if (!bot || !bot.entity || !bot.entity.position || !bot.findBlocks) return
 
         if (Date.now() - storageEsp.lastScan > 1000) {
             try {
+                // Additional safety check
+                if (!bot.entity || !bot.entity.position) {
+                    storageEsp.lastScan = Date.now()
+                    return
+                }
+
                 // Periodic scan
                 const chests = bot.findBlocks({
                     matching: (block) => ['chest', 'ender_chest', 'trapped_chest', 'shulker_box', 'barrel', 'furnace'].some(n => block.name.includes(n)),
