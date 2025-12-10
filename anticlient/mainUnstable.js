@@ -2276,6 +2276,18 @@ var initUI = () => {
       localStorage.removeItem("anticlient_script");
     };
     editorButtons.appendChild(clearBtn);
+    const apiBtn = document.createElement("button");
+    apiBtn.textContent = "API Docs";
+    apiBtn.style.padding = "8px 16px";
+    apiBtn.style.background = "#1976d2";
+    apiBtn.style.color = "white";
+    apiBtn.style.border = "none";
+    apiBtn.style.cursor = "pointer";
+    apiBtn.style.borderRadius = "4px";
+    apiBtn.onclick = () => {
+      window.open("https://github.com/PrismarineJS/mineflayer/blob/master/docs/api.md", "_blank");
+    };
+    editorButtons.appendChild(apiBtn);
     editorSection.appendChild(editorButtons);
     contentContainer.appendChild(editorSection);
     const packetSection = document.createElement("div");
