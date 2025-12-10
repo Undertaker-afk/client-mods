@@ -26,10 +26,10 @@
         },
         {
             "name": "anticlient",
-            "version": "1.3.0",
+            "version": "1.4.0",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t \nLatest: Improved UI (dropdowns), Auto Mine block selector, Debug logging default"
+            "description": "Hacked client for 2b2t \nLatest: Advanced ESP (2D/3D, Chams, Glow, Health bars, Distance, Tight fit)"
         }
     ]
 }

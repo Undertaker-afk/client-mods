@@ -9,9 +9,16 @@ export const loadRenderModules = () => {
     const esp = new Module('esp', 'ESP', 'Render', 'See entities through walls', {
         playerColor: '#00ffff',
         mobColor: '#ff0000',
-        wireframe: true,
+        boxType: '3D',
+        lineWidth: 2,
+        showHealth: true,
         showDistance: true,
-        distanceColor: '#ffffff'
+        glowEffect: true,
+        chams: true,
+        chamsColor: '#ff00ff',
+        tightFit: true
+    }, {
+        boxType: { type: 'dropdown', options: ['2D', '3D'] }
     })
     esp.onToggle = (enabled) => {
         if (!window.anticlient) window.anticlient = { visuals: {} }

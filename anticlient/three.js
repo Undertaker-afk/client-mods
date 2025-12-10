@@ -7,7 +7,7 @@ export const worldReady = (world) => {
     // Ensure structure exists
     if (!window.anticlient.visuals) window.anticlient.visuals = { esp: false, tracers: false }
 
-    const meshes = new Map() // ID -> THREE.Object3D (BoxHelper)
+    const meshes = new Map() // ID -> { box, glow, chams, healthBar, distanceLabel }
     const tracerLines = new Map() // ID -> THREE.Line
     const storageMeshes = new Map() // PosString -> THREE.LineSegments
     const blockEspMeshes = new Map() // PosString -> THREE.LineSegments
@@ -17,6 +17,24 @@ export const worldReady = (world) => {
     const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.8, linewidth: 2 })
     const storageMaterial = new THREE.LineBasicMaterial({ color: 0xffa500, depthTest: false, transparent: true, opacity: 1.0, linewidth: 2 })
     const blockEspMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true, opacity: 1.0, linewidth: 2 })
+
+    // Create sprite for text labels
+    const createTextSprite = (text, color = '#ffffff') => {
+        const canvas = document.createElement('canvas')
+        const context = canvas.getContext('2d')
+        canvas.width = 256
+        canvas.height = 64
+        context.font = 'Bold 32px Arial'
+        context.fillStyle = color
+        context.textAlign = 'center'
+        context.fillText(text, 128, 40)
+
+        const texture = new THREE.CanvasTexture(canvas)
+        const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false })
+        const sprite = new THREE.Sprite(spriteMaterial)
+        sprite.scale.set(2, 0.5, 1)
+        return sprite
+    }
 
     // Helper to get hex from string
     const parseColor = (str) => parseInt(str.replace('#', '0x'), 16)
@@ -47,21 +65,158 @@ export const worldReady = (world) => {
                 // --- ESP ---
                 if (activeEsp) {
                     if (!meshes.has(id)) {
-                        const w = 0.6
-                        const h = 1.8
-                        const geometry = new THREE.BoxGeometry(w, h, w)
-                        const edges = new THREE.EdgesGeometry(geometry)
-                        const line = new THREE.LineSegments(edges, material.clone())
-                        line.frustumCulled = false
-                        world.scene.add(line)
-                        meshes.set(id, line)
+                        // Create ESP components
+                        const espGroup = new THREE.Group()
+
+                        // Box dimensions (tighter fit if enabled)
+                        const w = settings.tightFit ? 0.6 : 0.8
+                        const h = settings.tightFit ? 1.8 : 2.0
+
+                        // Main box (3D or 2D)
+                        let box
+                        if (settings.boxType === '2D') {
+                            // 2D box (just front face)
+                            const geometry = new THREE.PlaneGeometry(w, h)
+                            const edges = new THREE.EdgesGeometry(geometry)
+                            box = new THREE.LineSegments(edges, material.clone())
+                        } else {
+                            // 3D box
+                            const geometry = new THREE.BoxGeometry(w, h, w)
+                            const edges = new THREE.EdgesGeometry(geometry)
+                            box = new THREE.LineSegments(edges, material.clone())
+                        }
+                        box.material.linewidth = settings.lineWidth || 2
+                        box.frustumCulled = false
+                        espGroup.add(box)
+
+                        // Chams (filled box visible through walls)
+                        let chams = null
+                        if (settings.chams) {
+                            const chamsGeometry = new THREE.BoxGeometry(w, h, w)
+                            const chamsMaterial = new THREE.MeshBasicMaterial({
+                                color: parseColor(settings.chamsColor || '#ff00ff'),
+                                transparent: true,
+                                opacity: 0.3,
+                                depthTest: false
+                            })
+                            chams = new THREE.Mesh(chamsGeometry, chamsMaterial)
+                            chams.frustumCulled = false
+                            espGroup.add(chams)
+                        }
+
+                        // Glow effect
+                        let glow = null
+                        if (settings.glowEffect) {
+                            const glowGeometry = new THREE.BoxGeometry(w * 1.1, h * 1.1, w * 1.1)
+                            const glowMaterial = new THREE.MeshBasicMaterial({
+                                color: color,
+                                transparent: true,
+                                opacity: 0.2,
+                                depthTest: false
+                            })
+                            glow = new THREE.Mesh(glowGeometry, glowMaterial)
+                            glow.frustumCulled = false
+                            espGroup.add(glow)
+                        }
+
+                        // Health bar
+                        let healthBar = null
+                        if (settings.showHealth) {
+                            const barWidth = w
+                            const barHeight = 0.1
+                            const barGeometry = new THREE.PlaneGeometry(barWidth, barHeight)
+                            const barMaterial = new THREE.MeshBasicMaterial({
+                                color: 0x00ff00,
+                                transparent: true,
+                                opacity: 0.8,
+                                depthTest: false
+                            })
+                            healthBar = new THREE.Mesh(barGeometry, barMaterial)
+                            healthBar.position.y = h / 2 + 0.3
+                            healthBar.frustumCulled = false
+                            espGroup.add(healthBar)
+                        }
+
+                        // Distance label
+                        let distanceLabel = null
+                        if (settings.showDistance) {
+                            distanceLabel = createTextSprite('0m', '#ffffff')
+                            distanceLabel.position.y = h / 2 + 0.6
+                            distanceLabel.frustumCulled = false
+                            espGroup.add(distanceLabel)
+                        }
+
+                        world.scene.add(espGroup)
+                        meshes.set(id, { group: espGroup, box, chams, glow, healthBar, distanceLabel, w, h })
                     }
-                    const mesh = meshes.get(id)
-                    mesh.visible = true
-                    mesh.position.set(pos.x, pos.y + 1.8 / 2, pos.z)
-                    mesh.material.color.setHex(color)
+
+                    const espData = meshes.get(id)
+                    espData.group.visible = true
+                    espData.group.position.set(pos.x, pos.y + espData.h / 2, pos.z)
+
+                    // Update box color and linewidth
+                    espData.box.material.color.setHex(color)
+                    espData.box.material.linewidth = settings.lineWidth || 2
+
+                    // Update chams
+                    if (espData.chams) {
+                        espData.chams.visible = settings.chams
+                        if (settings.chams) {
+                            espData.chams.material.color.setHex(parseColor(settings.chamsColor || '#ff00ff'))
+                        }
+                    }
+
+                    // Update glow
+                    if (espData.glow) {
+                        espData.glow.visible = settings.glowEffect
+                        if (settings.glowEffect) {
+                            espData.glow.material.color.setHex(color)
+                        }
+                    }
+
+                    // Update health bar
+                    if (espData.healthBar && settings.showHealth) {
+                        espData.healthBar.visible = true
+                        const health = entity.health || 20
+                        const maxHealth = entity.maxHealth || 20
+                        const healthPercent = health / maxHealth
+                        espData.healthBar.scale.x = healthPercent
+                        espData.healthBar.position.x = (healthPercent - 1) * espData.w / 2
+                        // Color based on health
+                        if (healthPercent > 0.6) espData.healthBar.material.color.setHex(0x00ff00)
+                        else if (healthPercent > 0.3) espData.healthBar.material.color.setHex(0xffff00)
+                        else espData.healthBar.material.color.setHex(0xff0000)
+                    } else if (espData.healthBar) {
+                        espData.healthBar.visible = false
+                    }
+
+                    // Update distance label
+                    if (espData.distanceLabel && settings.showDistance) {
+                        espData.distanceLabel.visible = true
+                        const distance = window.bot.entity.position.distanceTo(pos)
+                        const canvas = espData.distanceLabel.material.map.image
+                        const context = canvas.getContext('2d')
+                        context.clearRect(0, 0, canvas.width, canvas.height)
+                        context.font = 'Bold 32px Arial'
+                        context.fillStyle = '#ffffff'
+                        context.textAlign = 'center'
+                        context.fillText(`${distance.toFixed(1)}m`, 128, 40)
+                        espData.distanceLabel.material.map.needsUpdate = true
+
+                        // Make label face camera
+                        if (world.camera) {
+                            espData.distanceLabel.quaternion.copy(world.camera.quaternion)
+                        }
+                    } else if (espData.distanceLabel) {
+                        espData.distanceLabel.visible = false
+                    }
+
+                    // Make 2D box face camera
+                    if (settings.boxType === '2D' && world.camera) {
+                        espData.box.quaternion.copy(world.camera.quaternion)
+                    }
                 } else {
-                    if (meshes.has(id)) meshes.get(id).visible = false
+                    if (meshes.has(id)) meshes.get(id).group.visible = false
                 }
 
                 // --- Tracers ---
