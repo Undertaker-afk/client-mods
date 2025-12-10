@@ -409,8 +409,8 @@ var initUI = () => {
   }
 };
 
-// anticlient/entry.js
-var entry_default = (mod) => {
+// anticlient/mainUnstable.js
+var mainUnstable_default = (mod) => {
   console.log("[Anticlient] Initializing Modular Architecture...");
   loadCombatModules();
   loadMovementModules();
@@ -430,5 +430,5 @@ var entry_default = (mod) => {
   loop();
 };
 export {
-  entry_default as default
+  mainUnstable_default as default
 };
