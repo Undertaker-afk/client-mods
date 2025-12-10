@@ -17,8 +17,18 @@ export const initUI = () => {
     }
 
     window.addEventListener('keydown', (e) => {
-        if (e.code === 'ArrowRight' && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
+        // Toggle GUI
+        if (e.code === 'ShiftRight' && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
             toggleUi()
+        }
+
+        // Handle Module Binds
+        if (!document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
+            Object.values(modules).forEach(mod => {
+                if (mod.bind && e.code === mod.bind) {
+                    mod.toggle()
+                }
+            })
         }
     })
 
@@ -222,6 +232,38 @@ export const initUI = () => {
                 }
                 settingsDiv.appendChild(row)
             })
+
+            // Bind Button
+            const bindRow = document.createElement('div')
+            bindRow.className = 'ac-setting-row'
+            const bindLabel = document.createElement('span')
+            bindLabel.textContent = 'Bind'
+            bindRow.appendChild(bindLabel)
+
+            const bindBtn = document.createElement('button')
+            bindBtn.style.background = '#333'
+            bindBtn.style.color = 'white'
+            bindBtn.style.border = '1px solid #444'
+            bindBtn.style.cursor = 'pointer'
+            bindBtn.textContent = mod.bind || 'None'
+            bindBtn.onclick = () => {
+                bindBtn.textContent = 'Press Key...'
+                const handler = (e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (e.code === 'Escape') {
+                        mod.bind = null
+                        bindBtn.textContent = 'None'
+                    } else {
+                        mod.bind = e.code
+                        bindBtn.textContent = e.code
+                    }
+                    window.removeEventListener('keydown', handler, { capture: true })
+                }
+                window.addEventListener('keydown', handler, { capture: true })
+            }
+            bindRow.appendChild(bindBtn)
+            settingsDiv.appendChild(bindRow)
 
             modEl.appendChild(settingsDiv)
             contentContainer.appendChild(modEl)

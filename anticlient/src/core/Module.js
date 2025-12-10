@@ -7,6 +7,7 @@ export class Module {
         this.description = description
         this.enabled = false
         this.settings = defaultSettings
+        this.bind = null
         this.uiElement = null
     }
 
