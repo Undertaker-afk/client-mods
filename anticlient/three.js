@@ -13,10 +13,10 @@ export const worldReady = (world) => {
     const blockEspMeshes = new Map() // PosString -> THREE.LineSegments
     let miningOverlay = null // Mining progress overlay
 
-    const material = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true })
-    const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true })
-    const storageMaterial = new THREE.LineBasicMaterial({ color: 0xffa500, depthTest: false, transparent: true })
-    const blockEspMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true })
+    const material = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true, opacity: 1.0, linewidth: 2 })
+    const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.8, linewidth: 2 })
+    const storageMaterial = new THREE.LineBasicMaterial({ color: 0xffa500, depthTest: false, transparent: true, opacity: 1.0, linewidth: 2 })
+    const blockEspMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true, opacity: 1.0, linewidth: 2 })
 
     // Helper to get hex from string
     const parseColor = (str) => parseInt(str.replace('#', '0x'), 16)
@@ -77,9 +77,7 @@ export const worldReady = (world) => {
                     const line = tracerLines.get(id)
                     line.visible = true
 
-                    // Start from screen center (camera forward vector logic slightly complex here without direct cam access, 
-                    // usually tracers go from crosshair (cam position + forward) to entity)
-                    // Simplified: Start from bot head
+                    // Start from bot head
                     const headPos = window.bot.entity.position.offset(0, 1.62, 0)
 
                     // We need to update geometry positions
@@ -94,6 +92,14 @@ export const worldReady = (world) => {
                     if (tracerLines.has(id)) tracerLines.get(id).visible = false
                 }
             }
+
+            // Hide tracers not in entity list
+            if (!activeTracers) {
+                for (const line of tracerLines.values()) line.visible = false
+            }
+        } else {
+            // Hide all ESP and tracers when disabled
+            for (const mesh of meshes.values()) mesh.visible = false
             for (const line of tracerLines.values()) line.visible = false
         }
 

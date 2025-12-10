@@ -26,10 +26,10 @@
         },
         {
             "name": "anticlient",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t \nLatest Changes: Block Selector with Textures, Fixed X-Ray, Packet Mine, Logging System"
+            "description": "Hacked client for 2b2t \nLatest: Improved ESP/Tracers, Fixed Step, Blink Backtrack with UI, Logging System"
         }
     ]
 }

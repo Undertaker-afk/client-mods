@@ -326,12 +326,27 @@ var loadMovementModules = () => {
   const step = new Module("step", "Step", "Movement", "Instantly step up blocks", { height: 2 });
   let originalStepHeight = 0.6;
   step.onToggle = (enabled) => {
-    if (!window.bot) return;
+    const log = window.anticlientLogger?.module("Step");
+    if (!window.bot) {
+      if (log) log.warning("Bot not available");
+      return;
+    }
     if (enabled) {
       originalStepHeight = window.bot.physics?.stepHeight || 0.6;
-      if (window.bot.physics) window.bot.physics.stepHeight = step.settings.height;
+      if (window.bot.physics) {
+        window.bot.physics.stepHeight = step.settings.height;
+        if (log) log.info(`Step enabled: ${step.settings.height} blocks`);
+      }
     } else {
-      if (window.bot.physics) window.bot.physics.stepHeight = originalStepHeight;
+      if (window.bot.physics) {
+        window.bot.physics.stepHeight = originalStepHeight;
+        if (log) log.info("Step disabled");
+      }
+    }
+  };
+  step.onTick = (bot) => {
+    if (bot.physics && bot.physics.stepHeight !== step.settings.height) {
+      bot.physics.stepHeight = step.settings.height;
     }
   };
   registerModule(step);
@@ -393,33 +408,87 @@ var loadMovementModules = () => {
     }
   };
   registerModule(slowFall);
-  const blink = new Module("blink", "Blink", "Movement", "Teleport back to previous position", {
-    distance: 5,
-    cooldown: 1e3
+  const blink = new Module("blink", "Blink", "Movement", "Record positions and teleport back", {
+    recordInterval: 50,
+    // ms between position recordings
+    maxRecordTime: 1e4,
+    // 10 seconds max
+    holdKey: "KeyB"
+    // Key to hold for recording
   });
-  let lastPosition = null;
-  let lastBlinkTime = 0;
+  let positionHistory = [];
+  let isRecording = false;
+  let recordStartPos = null;
+  let recordStartTime = 0;
   blink.onToggle = (enabled) => {
-    if (enabled && window.bot) {
-      lastPosition = window.bot.entity.position.clone();
+    const log = window.anticlientLogger?.module("Blink");
+    if (!enabled) {
+      positionHistory = [];
+      isRecording = false;
+      recordStartPos = null;
+      if (window.anticlient?.blinkUI) {
+        window.anticlient.blinkUI.active = false;
+      }
+      if (log) log.info("Blink disabled, history cleared");
+    } else {
+      if (log) log.info("Blink enabled - hold B to record path");
     }
   };
   blink.onTick = (bot) => {
-    if (blink.enabled) {
-      const now = Date.now();
-      if (now - lastBlinkTime > 100) {
-        lastPosition = bot.entity.position.clone();
-        lastBlinkTime = now;
+    if (!bot || !bot.entity || !bot.entity.position) return;
+    const now = Date.now();
+    if (isRecording) {
+      if (now - (positionHistory[positionHistory.length - 1]?.time || 0) >= blink.settings.recordInterval) {
+        positionHistory.push({
+          pos: bot.entity.position.clone(),
+          time: now
+        });
+        const cutoffTime = now - blink.settings.maxRecordTime;
+        positionHistory = positionHistory.filter((p) => p.time >= cutoffTime);
+        if (window.anticlient?.blinkUI) {
+          window.anticlient.blinkUI.positions = positionHistory.length;
+          window.anticlient.blinkUI.duration = now - recordStartTime;
+        }
       }
     }
   };
   window.addEventListener("keydown", (e) => {
-    if (e.code === blink.bind && blink.enabled && window.bot && lastPosition) {
-      const now = Date.now();
-      if (now - lastBlinkTime > blink.settings.cooldown) {
-        window.bot.entity.position.set(lastPosition.x, lastPosition.y, lastPosition.z);
-        lastBlinkTime = now;
+    if (!blink.enabled || !window.bot) return;
+    if (e.code === blink.settings.holdKey && !isRecording) {
+      const log = window.anticlientLogger?.module("Blink");
+      isRecording = true;
+      recordStartPos = window.bot.entity.position.clone();
+      recordStartTime = Date.now();
+      positionHistory = [{
+        pos: recordStartPos.clone(),
+        time: recordStartTime
+      }];
+      if (window.anticlient) {
+        window.anticlient.blinkUI = {
+          active: true,
+          positions: 1,
+          duration: 0
+        };
       }
+      if (log) log.info("Started recording positions");
+    }
+  });
+  window.addEventListener("keyup", (e) => {
+    if (!blink.enabled || !window.bot) return;
+    if (e.code === blink.settings.holdKey && isRecording) {
+      const log = window.anticlientLogger?.module("Blink");
+      isRecording = false;
+      if (recordStartPos && positionHistory.length > 0) {
+        const startPos = positionHistory[0].pos;
+        window.bot.entity.position.set(startPos.x, startPos.y, startPos.z);
+        if (log) log.info(`Teleported back ${positionHistory.length} positions (${((Date.now() - recordStartTime) / 1e3).toFixed(1)}s)`);
+      }
+      setTimeout(() => {
+        positionHistory = [];
+        if (window.anticlient?.blinkUI) {
+          window.anticlient.blinkUI.active = false;
+        }
+      }, 100);
     }
   });
   registerModule(blink);
@@ -2209,6 +2278,44 @@ var initUI = () => {
   function setTranslate(xPos, yPos, el) {
     el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
   }
+  const blinkIndicator = document.createElement("div");
+  blinkIndicator.id = "blink-indicator";
+  blinkIndicator.style.position = "fixed";
+  blinkIndicator.style.top = "50%";
+  blinkIndicator.style.left = "50%";
+  blinkIndicator.style.transform = "translate(-50%, 100px)";
+  blinkIndicator.style.padding = "15px 30px";
+  blinkIndicator.style.background = "rgba(124, 77, 255, 0.9)";
+  blinkIndicator.style.border = "2px solid #7c4dff";
+  blinkIndicator.style.borderRadius = "8px";
+  blinkIndicator.style.color = "white";
+  blinkIndicator.style.fontFamily = "'Consolas', 'Monaco', monospace";
+  blinkIndicator.style.fontSize = "16px";
+  blinkIndicator.style.fontWeight = "bold";
+  blinkIndicator.style.zIndex = "99999";
+  blinkIndicator.style.display = "none";
+  blinkIndicator.style.textAlign = "center";
+  blinkIndicator.style.boxShadow = "0 0 20px rgba(124, 77, 255, 0.6)";
+  blinkIndicator.innerHTML = `
+        <div style="margin-bottom: 5px;">\u{1F52E} RECORDING BACKTRACK</div>
+        <div id="blink-stats" style="font-size: 14px; opacity: 0.9;">
+            Positions: <span id="blink-positions">0</span> |
+            Time: <span id="blink-time">0.0</span>s
+        </div>
+        <div style="font-size: 12px; margin-top: 8px; opacity: 0.7;">Release B to teleport back</div>
+    `;
+  document.body.appendChild(blinkIndicator);
+  const blinkUpdateInterval = setInterval(() => {
+    if (window.anticlient?.blinkUI?.active) {
+      blinkIndicator.style.display = "block";
+      const positions = window.anticlient.blinkUI.positions || 0;
+      const duration = (window.anticlient.blinkUI.duration || 0) / 1e3;
+      document.getElementById("blink-positions").textContent = positions;
+      document.getElementById("blink-time").textContent = duration.toFixed(1);
+    } else {
+      blinkIndicator.style.display = "none";
+    }
+  }, 50);
   return () => {
     stop3DPreview();
     if (previewRenderer) {
@@ -2221,8 +2328,10 @@ var initUI = () => {
     }
     if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot);
     if (blockSelectorModal && blockSelectorModal.parentNode) blockSelectorModal.parentNode.removeChild(blockSelectorModal);
+    if (blinkIndicator && blinkIndicator.parentNode) blinkIndicator.parentNode.removeChild(blinkIndicator);
     if (style && style.parentNode) style.parentNode.removeChild(style);
     if (previewInterval) clearInterval(previewInterval);
+    if (blinkUpdateInterval) clearInterval(blinkUpdateInterval);
     window.removeEventListener("keydown", keydownHandler);
     window.removeEventListener("mouseup", dragEnd);
     window.removeEventListener("mousemove", drag);

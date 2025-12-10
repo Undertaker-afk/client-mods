@@ -1135,6 +1135,48 @@ export const initUI = () => {
         el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
     }
 
+    // --- Blink Backtrack UI Indicator ---
+    const blinkIndicator = document.createElement('div')
+    blinkIndicator.id = 'blink-indicator'
+    blinkIndicator.style.position = 'fixed'
+    blinkIndicator.style.top = '50%'
+    blinkIndicator.style.left = '50%'
+    blinkIndicator.style.transform = 'translate(-50%, 100px)'
+    blinkIndicator.style.padding = '15px 30px'
+    blinkIndicator.style.background = 'rgba(124, 77, 255, 0.9)'
+    blinkIndicator.style.border = '2px solid #7c4dff'
+    blinkIndicator.style.borderRadius = '8px'
+    blinkIndicator.style.color = 'white'
+    blinkIndicator.style.fontFamily = "'Consolas', 'Monaco', monospace"
+    blinkIndicator.style.fontSize = '16px'
+    blinkIndicator.style.fontWeight = 'bold'
+    blinkIndicator.style.zIndex = '99999'
+    blinkIndicator.style.display = 'none'
+    blinkIndicator.style.textAlign = 'center'
+    blinkIndicator.style.boxShadow = '0 0 20px rgba(124, 77, 255, 0.6)'
+    blinkIndicator.innerHTML = `
+        <div style="margin-bottom: 5px;">🔮 RECORDING BACKTRACK</div>
+        <div id="blink-stats" style="font-size: 14px; opacity: 0.9;">
+            Positions: <span id="blink-positions">0</span> |
+            Time: <span id="blink-time">0.0</span>s
+        </div>
+        <div style="font-size: 12px; margin-top: 8px; opacity: 0.7;">Release B to teleport back</div>
+    `
+    document.body.appendChild(blinkIndicator)
+
+    // Update blink indicator
+    const blinkUpdateInterval = setInterval(() => {
+        if (window.anticlient?.blinkUI?.active) {
+            blinkIndicator.style.display = 'block'
+            const positions = window.anticlient.blinkUI.positions || 0
+            const duration = (window.anticlient.blinkUI.duration || 0) / 1000
+            document.getElementById('blink-positions').textContent = positions
+            document.getElementById('blink-time').textContent = duration.toFixed(1)
+        } else {
+            blinkIndicator.style.display = 'none'
+        }
+    }, 50)
+
     // Return cleanup function
     return () => {
         stop3DPreview()
@@ -1148,8 +1190,10 @@ export const initUI = () => {
         }
         if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot)
         if (blockSelectorModal && blockSelectorModal.parentNode) blockSelectorModal.parentNode.removeChild(blockSelectorModal)
+        if (blinkIndicator && blinkIndicator.parentNode) blinkIndicator.parentNode.removeChild(blinkIndicator)
         if (style && style.parentNode) style.parentNode.removeChild(style)
         if (previewInterval) clearInterval(previewInterval)
+        if (blinkUpdateInterval) clearInterval(blinkUpdateInterval)
         window.removeEventListener('keydown', keydownHandler)
         window.removeEventListener("mouseup", dragEnd)
         window.removeEventListener("mousemove", drag)

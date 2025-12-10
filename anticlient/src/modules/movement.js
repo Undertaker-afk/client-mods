@@ -114,12 +114,28 @@ export const loadMovementModules = () => {
     const step = new Module('step', 'Step', 'Movement', 'Instantly step up blocks', { height: 2 })
     let originalStepHeight = 0.6
     step.onToggle = (enabled) => {
-        if (!window.bot) return
+        const log = window.anticlientLogger?.module('Step')
+        if (!window.bot) {
+            if (log) log.warning('Bot not available')
+            return
+        }
         if (enabled) {
             originalStepHeight = window.bot.physics?.stepHeight || 0.6
-            if (window.bot.physics) window.bot.physics.stepHeight = step.settings.height
+            if (window.bot.physics) {
+                window.bot.physics.stepHeight = step.settings.height
+                if (log) log.info(`Step enabled: ${step.settings.height} blocks`)
+            }
         } else {
-            if (window.bot.physics) window.bot.physics.stepHeight = originalStepHeight
+            if (window.bot.physics) {
+                window.bot.physics.stepHeight = originalStepHeight
+                if (log) log.info('Step disabled')
+            }
+        }
+    }
+    step.onTick = (bot) => {
+        // Ensure step height is maintained
+        if (bot.physics && bot.physics.stepHeight !== step.settings.height) {
+            bot.physics.stepHeight = step.settings.height
         }
     }
     registerModule(step)
@@ -199,38 +215,110 @@ export const loadMovementModules = () => {
     }
     registerModule(slowFall)
 
-    // -- Blink/Teleport --
-    const blink = new Module('blink', 'Blink', 'Movement', 'Teleport back to previous position', { 
-        distance: 5,
-        cooldown: 1000
+    // -- Blink/Backtrack --
+    const blink = new Module('blink', 'Blink', 'Movement', 'Record positions and teleport back', {
+        recordInterval: 50, // ms between position recordings
+        maxRecordTime: 10000, // 10 seconds max
+        holdKey: 'KeyB' // Key to hold for recording
     })
-    let lastPosition = null
-    let lastBlinkTime = 0
+
+    let positionHistory = [] // Array of {pos, time}
+    let isRecording = false
+    let recordStartPos = null
+    let recordStartTime = 0
+
     blink.onToggle = (enabled) => {
-        if (enabled && window.bot) {
-            lastPosition = window.bot.entity.position.clone()
+        const log = window.anticlientLogger?.module('Blink')
+        if (!enabled) {
+            positionHistory = []
+            isRecording = false
+            recordStartPos = null
+            if (window.anticlient?.blinkUI) {
+                window.anticlient.blinkUI.active = false
+            }
+            if (log) log.info('Blink disabled, history cleared')
+        } else {
+            if (log) log.info('Blink enabled - hold B to record path')
         }
     }
+
     blink.onTick = (bot) => {
-        if (blink.enabled) {
-            // Store position periodically
-            const now = Date.now()
-            if (now - lastBlinkTime > 100) {
-                lastPosition = bot.entity.position.clone()
-                lastBlinkTime = now
+        if (!bot || !bot.entity || !bot.entity.position) return
+
+        const now = Date.now()
+
+        if (isRecording) {
+            // Record position
+            if (now - (positionHistory[positionHistory.length - 1]?.time || 0) >= blink.settings.recordInterval) {
+                positionHistory.push({
+                    pos: bot.entity.position.clone(),
+                    time: now
+                })
+
+                // Limit history to maxRecordTime
+                const cutoffTime = now - blink.settings.maxRecordTime
+                positionHistory = positionHistory.filter(p => p.time >= cutoffTime)
+
+                // Update UI
+                if (window.anticlient?.blinkUI) {
+                    window.anticlient.blinkUI.positions = positionHistory.length
+                    window.anticlient.blinkUI.duration = now - recordStartTime
+                }
             }
         }
     }
-    // Add keybind handler for blink
+
+    // Keyboard handler for recording
     window.addEventListener('keydown', (e) => {
-        if (e.code === blink.bind && blink.enabled && window.bot && lastPosition) {
-            const now = Date.now()
-            if (now - lastBlinkTime > blink.settings.cooldown) {
-                window.bot.entity.position.set(lastPosition.x, lastPosition.y, lastPosition.z)
-                lastBlinkTime = now
+        if (!blink.enabled || !window.bot) return
+
+        if (e.code === blink.settings.holdKey && !isRecording) {
+            const log = window.anticlientLogger?.module('Blink')
+            isRecording = true
+            recordStartPos = window.bot.entity.position.clone()
+            recordStartTime = Date.now()
+            positionHistory = [{
+                pos: recordStartPos.clone(),
+                time: recordStartTime
+            }]
+
+            if (window.anticlient) {
+                window.anticlient.blinkUI = {
+                    active: true,
+                    positions: 1,
+                    duration: 0
+                }
             }
+
+            if (log) log.info('Started recording positions')
         }
     })
+
+    window.addEventListener('keyup', (e) => {
+        if (!blink.enabled || !window.bot) return
+
+        if (e.code === blink.settings.holdKey && isRecording) {
+            const log = window.anticlientLogger?.module('Blink')
+            isRecording = false
+
+            // Teleport back to start position
+            if (recordStartPos && positionHistory.length > 0) {
+                const startPos = positionHistory[0].pos
+                window.bot.entity.position.set(startPos.x, startPos.y, startPos.z)
+
+                if (log) log.info(`Teleported back ${positionHistory.length} positions (${((Date.now() - recordStartTime) / 1000).toFixed(1)}s)`)
+            }
+
+            // Clear history after teleport
+            setTimeout(() => {
+                positionHistory = []
+                if (window.anticlient?.blinkUI) {
+                    window.anticlient.blinkUI.active = false
+                }
+            }, 100)
+        }
+    })
+
     registerModule(blink)
 
     // -- Anti-Knockback (Enhanced) --
