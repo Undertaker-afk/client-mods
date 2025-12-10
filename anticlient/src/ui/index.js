@@ -11,8 +11,8 @@ export const initUI = () => {
     const uiRoot = document.createElement('div')
     uiRoot.id = 'anticlient-root'
     uiRoot.style.position = 'fixed'
-    uiRoot.style.top = '20px'
-    uiRoot.style.left = '20px'
+    uiRoot.style.top = '100px'
+    uiRoot.style.left = '100px'
     uiRoot.style.zIndex = '10000'
     uiRoot.style.fontFamily = "'Consolas', 'Monaco', monospace"
     uiRoot.style.userSelect = 'none'
@@ -23,12 +23,9 @@ export const initUI = () => {
     }
 
     const keydownHandler = (e) => {
-        // Toggle GUI
         if (e.code === 'ShiftRight' && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
             toggleUi()
         }
-
-        // Handle Module Binds
         if (!document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
             Object.values(modules).forEach(mod => {
                 if (mod.bind && e.code === mod.bind) {
@@ -46,13 +43,17 @@ export const initUI = () => {
         background-color: #0f0f13;
         border: 2px solid #7c4dff;
         border-radius: 8px;
-        width: 600px;
         box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
         color: #e0e0e0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        height: 400px;
+        height: 500px;
+        width: 650px;
+        transition: width 0.3s ease;
+    }
+    .ac-window.expanded {
+        width: 950px;
     }
     .ac-header {
         background-color: #1a1a20;
@@ -62,6 +63,7 @@ export const initUI = () => {
         justify-content: space-between;
         align-items: center;
         cursor: move;
+        flex-shrink: 0;
     }
     .ac-title {
         font-weight: bold;
@@ -69,21 +71,28 @@ export const initUI = () => {
         font-size: 1.1em;
         letter-spacing: 1px;
     }
-    .ac-tabs {
+    .ac-body {
         display: flex;
+        flex: 1;
+        overflow: hidden;
+    }
+    .ac-sidebar {
+        width: 150px;
         background-color: #15151a;
-        margin: 0;
-        padding: 0;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid #333;
+        flex-shrink: 0;
     }
     .ac-tab {
-        flex: 1;
-        text-align: center;
-        padding: 10px 0;
+        text-align: left;
+        padding: 15px 20px;
         cursor: pointer;
-        background-color: #15151a;
+        background-color: transparent;
         transition: background-color 0.2s, color 0.2s;
-        border-bottom: 2px solid transparent;
+        border-left: 3px solid transparent;
         color: #777;
+        font-weight: 500;
     }
     .ac-tab:hover {
         background-color: #20202a;
@@ -91,14 +100,15 @@ export const initUI = () => {
     }
     .ac-tab.active {
         color: #b388ff;
-        border-bottom: 2px solid #b388ff;
-        background-color: #252530;
+        border-left: 3px solid #b388ff;
+        background-color: #1e1e24;
     }
     .ac-content {
         padding: 15px;
         flex: 1; 
         overflow-y: auto;
         background-color: #0f0f13;
+        min-width: 0; /* Fix flex child overflow */
     }
     .ac-module {
         background-color: #1a1a20;
@@ -150,44 +160,187 @@ export const initUI = () => {
     .ac-checkbox {
        accent-color: #7c4dff;
     }
-    .ac-content::-webkit-scrollbar {
-        width: 8px;
+    .ac-preview-panel {
+        width: 300px;
+        background-color: #111;
+        border-left: 1px solid #333;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        flex-shrink: 0;
     }
-    .ac-content::-webkit-scrollbar-track {
-        background: #0f0f13;
+    .ac-preview-title {
+        margin-bottom: 10px;
+        color: #aaa;
+        font-size: 0.9em;
     }
-    .ac-content::-webkit-scrollbar-thumb {
-        background: #333;
-        border-radius: 4px;
-    }
+    /* Scrollbar */
+    .ac-content::-webkit-scrollbar { width: 8px; }
+    .ac-content::-webkit-scrollbar-track { background: #0f0f13; }
+    .ac-content::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
     `
     document.head.appendChild(style)
 
+    // DOM Construction
     const windowEl = document.createElement('div')
     windowEl.className = 'ac-window'
     uiRoot.appendChild(windowEl)
 
     const header = document.createElement('div')
     header.className = 'ac-header'
-    header.innerHTML = '<span class="ac-title">ANTICLIENT</span> <span style="font-size: 0.8em; color: gray">v1.3</span>'
+    header.innerHTML = '<span class="ac-title">ANTICLIENT</span> <span style="font-size: 0.8em; color: gray">v1.4</span>'
     windowEl.appendChild(header)
 
-    const tabsContainer = document.createElement('div')
-    tabsContainer.className = 'ac-tabs'
-    windowEl.appendChild(tabsContainer)
+    const bodyEl = document.createElement('div')
+    bodyEl.className = 'ac-body'
+    windowEl.appendChild(bodyEl)
+
+    const sidebar = document.createElement('div')
+    sidebar.className = 'ac-sidebar'
+    bodyEl.appendChild(sidebar)
 
     const contentContainer = document.createElement('div')
     contentContainer.className = 'ac-content'
-    windowEl.appendChild(contentContainer)
+    bodyEl.appendChild(contentContainer)
+
+    const previewPanel = document.createElement('div')
+    previewPanel.className = 'ac-preview-panel'
+    previewPanel.style.display = 'none' // default hidden
+    previewPanel.innerHTML = '<div class="ac-preview-title">VISUAL PREVIEW</div>'
+    const canvas = document.createElement('canvas')
+    canvas.width = 280
+    canvas.height = 400
+    previewPanel.appendChild(canvas)
+    bodyEl.appendChild(previewPanel)
 
     document.body.appendChild(uiRoot)
 
-    // UI Logic
-    let activeTab = 'Movement'
+    // State & Logic
+    let activeTab = 'Movement' // Default
+
+    // Preview Render Loop
+    const ctx = canvas.getContext('2d')
+    const drawSteve = () => {
+        if (activeTab !== 'Render') return
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+        // Background Grid
+        ctx.strokeStyle = '#222'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        for (let x = 0; x < canvas.width; x += 20) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+        for (let y = 0; y < canvas.height; y += 20) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+        ctx.stroke()
+
+        // Get Settings
+        const esp = modules['esp']
+        const storageEsp = modules['storageesp']
+
+        // Center Point
+        const cx = canvas.width / 2
+        const cy = canvas.height / 2 + 50
+
+        // Draw Steve (Simple Rects)
+        const steveColor = '#555'
+        ctx.fillStyle = steveColor
+
+        // Head
+        ctx.fillRect(cx - 20, cy - 160, 40, 40)
+        // Body
+        ctx.fillRect(cx - 20, cy - 120, 40, 60)
+        // Arms
+        ctx.fillRect(cx - 40, cy - 120, 20, 60)
+        ctx.fillRect(cx + 20, cy - 120, 20, 60)
+        // Legs
+        ctx.fillRect(cx - 20, cy - 60, 20, 60)
+        ctx.fillRect(cx, cy - 60, 20, 60)
+
+        // Draw Render Hacks Overlay
+        if (esp && esp.enabled) {
+            const pc = esp.settings.playerColor || '#00ffff'
+            // Box
+            ctx.strokeStyle = pc
+            ctx.lineWidth = 2
+
+            // 2D ESP Box around Steve
+            const top = cy - 170
+            const bot = cy
+            const left = cx - 50
+            const width = 100
+            const height = 170
+
+            if (esp.settings.wireframe) {
+                ctx.strokeRect(left, top, width, height)
+            } else {
+                ctx.globalAlpha = 0.2
+                ctx.fillStyle = pc
+                ctx.fillRect(left, top, width, height)
+                ctx.globalAlpha = 1.0
+                ctx.strokeRect(left, top, width, height)
+            }
+
+            // Nametag
+            ctx.fillStyle = 'white'
+            ctx.font = '12px monospace'
+            ctx.textAlign = 'center'
+            ctx.fillText('Steve', cx, top - 10)
+        }
+
+        // Draw Storage ESP Example (Just a chest to the side)
+        if (storageEsp && storageEsp.enabled) {
+            const sc = storageEsp.settings.color || '#FFA500'
+            const cxChest = cx + 80
+            const cyChest = cy - 20
+
+            // Chest Base
+            ctx.fillStyle = '#654321'
+            ctx.fillRect(cxChest - 15, cyChest - 15, 30, 30)
+
+            // ESP Box
+            ctx.strokeStyle = sc
+            ctx.lineWidth = 2
+            ctx.strokeRect(cxChest - 15, cyChest - 15, 30, 30)
+            ctx.fillStyle = 'white'
+            ctx.fillText('Chest', cxChest, cyChest - 20)
+        }
+    }
+
+    let previewInterval = null
+
+    const updateLayout = () => {
+        if (activeTab === 'Render') {
+            windowEl.classList.add('expanded')
+            previewPanel.style.display = 'flex'
+            if (!previewInterval) previewInterval = setInterval(drawSteve, 100)
+            // Initial Draw
+            requestAnimationFrame(drawSteve)
+        } else {
+            windowEl.classList.remove('expanded')
+            previewPanel.style.display = 'none'
+            if (previewInterval) {
+                clearInterval(previewInterval)
+                previewInterval = null
+            }
+        }
+    }
 
     const renderModules = () => {
         contentContainer.innerHTML = ''
         const catMods = categories[activeTab] || []
+
+        if (!catMods.length) {
+            const emptyMsg = document.createElement('div')
+            emptyMsg.textContent = 'No modules in this category.'
+            emptyMsg.style.color = '#555'
+            emptyMsg.style.textAlign = 'center'
+            emptyMsg.style.marginTop = '20px'
+            contentContainer.appendChild(emptyMsg)
+            return
+        }
+
         catMods.forEach(mod => {
             const modEl = document.createElement('div')
             modEl.className = 'ac-module' + (mod.enabled ? ' enabled' : '')
@@ -252,42 +405,6 @@ export const initUI = () => {
                 settingsDiv.appendChild(row)
             })
 
-            // Special Preview for ESP
-            if (mod.id === 'esp') {
-                const previewRow = document.createElement('div')
-                previewRow.style.display = 'flex'
-                previewRow.style.justifyContent = 'center'
-                previewRow.style.padding = '10px'
-                previewRow.style.marginTop = '5px'
-                previewRow.style.background = '#111'
-                previewRow.style.border = '1px dashed #333'
-
-                const canvas = document.createElement('canvas')
-                canvas.width = 200
-                canvas.height = 100
-                previewRow.appendChild(canvas)
-
-                const ctx = canvas.getContext('2d')
-                const drawPreview = () => {
-                    if (!ctx) return
-                    ctx.clearRect(0, 0, 200, 100)
-
-                    // Player Box
-                    ctx.strokeStyle = mod.settings.playerColor
-                    ctx.lineWidth = 2
-                    ctx.strokeRect(30, 20, 40, 60)
-                    ctx.fillStyle = 'white'
-                    ctx.fillText('Player', 30, 90)
-
-                    // Mob Box
-                    ctx.strokeStyle = mod.settings.mobColor
-                    ctx.strokeRect(130, 30, 40, 40)
-                    ctx.fillText('Mob', 135, 90)
-                }
-                setInterval(drawPreview, 200)
-                settingsDiv.appendChild(previewRow)
-            }
-
             // Bind Button
             const bindRow = document.createElement('div')
             bindRow.className = 'ac-setting-row'
@@ -326,20 +443,23 @@ export const initUI = () => {
     }
 
     const renderTabs = () => {
-        tabsContainer.innerHTML = ''
+        sidebar.innerHTML = ''
         Object.keys(categories).forEach(cat => {
             const tab = document.createElement('div')
             tab.className = 'ac-tab' + (cat === activeTab ? ' active' : '')
             tab.textContent = cat
             tab.onclick = () => {
                 activeTab = cat
+                updateLayout()
                 renderTabs()
                 renderModules()
             }
-            tabsContainer.appendChild(tab)
+            sidebar.appendChild(tab)
         })
     }
 
+    // Initialize Layout
+    updateLayout()
     renderTabs()
     renderModules()
 
@@ -386,6 +506,7 @@ export const initUI = () => {
     return () => {
         if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot)
         if (style && style.parentNode) style.parentNode.removeChild(style)
+        if (previewInterval) clearInterval(previewInterval)
         window.removeEventListener('keydown', keydownHandler)
         window.removeEventListener("mouseup", dragEnd)
         window.removeEventListener("mousemove", drag)
