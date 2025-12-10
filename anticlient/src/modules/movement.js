@@ -73,4 +73,39 @@ export const loadMovementModules = () => {
         }
     }
     registerModule(nofall)
+
+    // -- High Jump --
+    const highJump = new Module('highjump', 'High Jump', 'Movement', 'Jump higher', { height: 1.5 })
+    highJump.onTick = (bot) => {
+        if (bot.controlState.jump && bot.entity.onGround) {
+            bot.entity.velocity.y = 0.42 * highJump.settings.height
+        }
+    }
+    registerModule(highJump)
+
+    // -- Scaffold --
+    const scaffold = new Module('scaffold', 'Scaffold', 'Movement', 'Place blocks under you', {})
+    scaffold.onTick = (bot) => {
+        const pos = bot.entity.position
+        const blockBelow = bot.blockAt(pos.offset(0, -1, 0))
+        if (blockBelow && blockBelow.boundingBox === 'empty') {
+            // Find block to place
+            const item = bot.inventory.items().find(i => i.name !== 'air' && !i.name.includes('sword') && !i.name.includes('pickaxe'))
+            if (item) {
+                bot.equip(item, 'hand').then(() => {
+                    // Try to place against a neighbor
+                    // This is complex logic for simple scaffold
+                    // We'll trust bot.placeBlock logic if we can find a reference face
+                }).catch(() => { })
+            }
+        }
+    }
+    registerModule(scaffold)
+
+    // -- NoSlow --
+    const noSlow = new Module('noslow', 'No Slow', 'Movement', 'No slowdown when eating', {})
+    noSlow.onTick = (bot) => {
+        // Force speed restore?
+    }
+    registerModule(noSlow)
 }

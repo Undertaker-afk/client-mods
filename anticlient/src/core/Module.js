@@ -29,7 +29,8 @@ export const categories = {
     'Combat': [],
     'Movement': [],
     'Render': [],
-    'Player': []
+    'Player': [],
+    'World': []
 }
 
 export const modules = {}

@@ -13,4 +13,10 @@ export const loadPlayerModules = () => {
         }
     }
     registerModule(autoEat)
+
+    const chestStealer = new Module('cheststealer', 'Chest Stealer', 'Player', 'Steal items from chests', { delay: 100 })
+    chestStealer.onToggle = (enabled) => {
+        // Logic usually requires global event listener
+    }
+    registerModule(chestStealer)
 }

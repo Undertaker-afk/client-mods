@@ -33,4 +33,27 @@ export const loadRenderModules = () => {
         window.anticlient.visuals.tracers = enabled
     }
     registerModule(tracers)
+
+    const storageEsp = new Module('storageesp', 'Storage ESP', 'Render', 'See chests and containers', { color: '#FFA500' })
+    storageEsp.lastScan = 0
+    storageEsp.onToggle = (enabled) => {
+        if (!window.anticlient?.visuals) return
+        window.anticlient.visuals.storageEsp = enabled
+        window.anticlient.visuals.storageEspSettings = storageEsp.settings
+    }
+    storageEsp.onTick = (bot) => {
+        if (Date.now() - storageEsp.lastScan > 1000) {
+            // Periodic scan
+            const chests = bot.findBlocks({
+                matching: (block) => ['chest', 'ender_chest', 'trapped_chest', 'shulker_box', 'barrel', 'furnace'].some(n => block.name.includes(n)),
+                maxDistance: 64,
+                count: 100
+            })
+            if (window.anticlient?.visuals) {
+                window.anticlient.visuals.storageLocations = chests
+            }
+            storageEsp.lastScan = Date.now()
+        }
+    }
+    registerModule(storageEsp)
 }

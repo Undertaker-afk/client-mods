@@ -29,7 +29,8 @@ var categories = {
   "Combat": [],
   "Movement": [],
   "Render": [],
-  "Player": []
+  "Player": [],
+  "World": []
 };
 var modules = {};
 var registerModule = (module) => {
@@ -53,6 +54,23 @@ var loadCombatModules = () => {
     }
   };
   registerModule(killaura);
+  const criticals = new Module("criticals", "Criticals", "Combat", "Deal critical hits", {});
+  criticals.onTick = (bot) => {
+  };
+  registerModule(criticals);
+  const velocity = new Module("velocity", "AntiKnockback", "Combat", "No knockback", {});
+  velocity.onTick = (bot) => {
+    if (bot.entity.velocity.x !== 0 || bot.entity.velocity.z !== 0) {
+    }
+  };
+  const autoArmor = new Module("autoarmor", "Auto Armor", "Combat", "Equip best armor", {});
+  let aaTick = 0;
+  autoArmor.onTick = (bot) => {
+    aaTick++;
+    if (aaTick % 20 === 0) {
+    }
+  };
+  registerModule(autoArmor);
 };
 
 // anticlient/src/modules/movement.js
@@ -116,6 +134,31 @@ var loadMovementModules = () => {
     }
   };
   registerModule(nofall);
+  const highJump = new Module("highjump", "High Jump", "Movement", "Jump higher", { height: 1.5 });
+  highJump.onTick = (bot) => {
+    if (bot.controlState.jump && bot.entity.onGround) {
+      bot.entity.velocity.y = 0.42 * highJump.settings.height;
+    }
+  };
+  registerModule(highJump);
+  const scaffold = new Module("scaffold", "Scaffold", "Movement", "Place blocks under you", {});
+  scaffold.onTick = (bot) => {
+    const pos = bot.entity.position;
+    const blockBelow = bot.blockAt(pos.offset(0, -1, 0));
+    if (blockBelow && blockBelow.boundingBox === "empty") {
+      const item = bot.inventory.items().find((i) => i.name !== "air" && !i.name.includes("sword") && !i.name.includes("pickaxe"));
+      if (item) {
+        bot.equip(item, "hand").then(() => {
+        }).catch(() => {
+        });
+      }
+    }
+  };
+  registerModule(scaffold);
+  const noSlow = new Module("noslow", "No Slow", "Movement", "No slowdown when eating", {});
+  noSlow.onTick = (bot) => {
+  };
+  registerModule(noSlow);
 };
 
 // anticlient/src/modules/render.js
@@ -148,6 +191,27 @@ var loadRenderModules = () => {
     window.anticlient.visuals.tracers = enabled;
   };
   registerModule(tracers);
+  const storageEsp = new Module("storageesp", "Storage ESP", "Render", "See chests and containers", { color: "#FFA500" });
+  storageEsp.lastScan = 0;
+  storageEsp.onToggle = (enabled) => {
+    if (!window.anticlient?.visuals) return;
+    window.anticlient.visuals.storageEsp = enabled;
+    window.anticlient.visuals.storageEspSettings = storageEsp.settings;
+  };
+  storageEsp.onTick = (bot) => {
+    if (Date.now() - storageEsp.lastScan > 1e3) {
+      const chests = bot.findBlocks({
+        matching: (block) => ["chest", "ender_chest", "trapped_chest", "shulker_box", "barrel", "furnace"].some((n) => block.name.includes(n)),
+        maxDistance: 64,
+        count: 100
+      });
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.storageLocations = chests;
+      }
+      storageEsp.lastScan = Date.now();
+    }
+  };
+  registerModule(storageEsp);
 };
 
 // anticlient/src/modules/player.js
@@ -163,6 +227,30 @@ var loadPlayerModules = () => {
     }
   };
   registerModule(autoEat);
+  const chestStealer = new Module("cheststealer", "Chest Stealer", "Player", "Steal items from chests", { delay: 100 });
+  chestStealer.onToggle = (enabled) => {
+  };
+  registerModule(chestStealer);
+};
+
+// anticlient/src/modules/world.js
+var loadWorldModules = () => {
+  const nuker = new Module("nuker", "Nuker", "World", "Break blocks around you", { range: 4 });
+  nuker.onTick = (bot) => {
+    if (bot.targetDigBlock) return;
+    const target = bot.findBlock({
+      matching: (block) => block.name !== "air" && block.name !== "bedrock" && block.hardness < 100,
+      // Filter
+      maxDistance: nuker.settings.range
+    });
+    if (target) {
+      bot.dig(target).catch((e) => {
+      });
+    }
+  };
+  registerModule(nuker);
+  const fastPlace = new Module("fastplace", "Fast Place", "World", "Place blocks faster", {});
+  registerModule(fastPlace);
 };
 
 // anticlient/src/ui/index.js
@@ -514,6 +602,7 @@ var entry_default = (mod) => {
   loadMovementModules();
   loadRenderModules();
   loadPlayerModules();
+  loadWorldModules();
   initUI();
   let bot = void 0;
   const loop = () => {

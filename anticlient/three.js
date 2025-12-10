@@ -9,9 +9,11 @@ export const worldReady = (world) => {
 
     const meshes = new Map() // ID -> THREE.Object3D (BoxHelper)
     const tracerLines = new Map() // ID -> THREE.Line
+    const storageMeshes = new Map() // PosString -> THREE.LineSegments
 
     const material = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true })
     const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true })
+    const storageMaterial = new THREE.LineBasicMaterial({ color: 0xffa500, depthTest: false, transparent: true })
 
     // Helper to get hex from string
     const parseColor = (str) => parseInt(str.replace('#', '0x'), 16)
@@ -89,13 +91,49 @@ export const worldReady = (world) => {
                     if (tracerLines.has(id)) tracerLines.get(id).visible = false
                 }
             }
-        } else {
-            // Hide all
-            for (const mesh of meshes.values()) mesh.visible = false
             for (const line of tracerLines.values()) line.visible = false
         }
 
-        // Cleanup
+        // --- Storage ESP ---
+        const activeStorage = window.anticlient.visuals.storageEsp
+        const storageLocs = window.anticlient.visuals.storageLocations || []
+
+        if (activeStorage && storageLocs.length > 0) {
+            const storSettings = window.anticlient.visuals.storageEspSettings || { color: '#FFA500' }
+            const sColor = parseColor(storSettings.color)
+
+            const currentKeys = new Set()
+
+            for (const vec of storageLocs) {
+                const key = `${vec.x},${vec.y},${vec.z}`
+                currentKeys.add(key)
+
+                if (!storageMeshes.has(key)) {
+                    const geometry = new THREE.BoxGeometry(1, 1, 1)
+                    const edges = new THREE.EdgesGeometry(geometry)
+                    const line = new THREE.LineSegments(edges, storageMaterial.clone())
+                    line.frustumCulled = false
+                    // Adjust position to be block center
+                    line.position.set(vec.x + 0.5, vec.y + 0.5, vec.z + 0.5)
+                    world.scene.add(line)
+                    storageMeshes.set(key, line)
+                }
+                const mesh = storageMeshes.get(key)
+                mesh.visible = true
+                mesh.material.color.setHex(sColor)
+            }
+
+            // Cleanup missing
+            for (const [key, mesh] of storageMeshes.entries()) {
+                if (!currentKeys.has(key)) {
+                    mesh.visible = false
+                }
+            }
+        } else {
+            for (const mesh of storageMeshes.values()) mesh.visible = false
+        }
+
+        // Cleanup entities
         for (const id of meshes.keys()) {
             if (!window.bot.entities[id]) {
                 const mesh = meshes.get(id)

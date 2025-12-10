@@ -3,6 +3,7 @@ import { loadCombatModules } from './src/modules/combat.js'
 import { loadMovementModules } from './src/modules/movement.js'
 import { loadRenderModules } from './src/modules/render.js'
 import { loadPlayerModules } from './src/modules/player.js'
+import { loadWorldModules } from './src/modules/world.js'
 import { modules } from './src/core/Module.js'
 import { initUI } from './src/ui/index.js'
 
@@ -14,6 +15,7 @@ export default (mod) => {
     loadMovementModules()
     loadRenderModules()
     loadPlayerModules()
+    loadWorldModules()
 
     // 2. Initialize UI
     initUI()
