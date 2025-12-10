@@ -500,39 +500,39 @@ export const loadMovementModules = () => {
     registerModule(invWalk)
 
     // -- Portal GUI --
-    const portalGUI = new Module('portalgui', 'Portal GUI', 'Movement', 'Open inventory in nether portals')
+    const portalGUI = new Module('portalgui', 'Portal GUI', 'Movement', 'Allow opening inventory in nether portals')
 
-    let lastInPortal = false
-    let portalCheckInterval = null
+    let originalIsInPortal = null
 
     portalGUI.onToggle = (enabled) => {
         const log = window.anticlientLogger?.module('PortalGUI')
         if (enabled) {
-            if (log) log.info('Portal GUI enabled')
-            // Start checking for portal
-            portalCheckInterval = setInterval(() => {
-                if (!window.bot) return
-
-                const inPortal = window.bot.entity?.isInPortal || false
-
-                // Detect entering portal
-                if (inPortal && !lastInPortal) {
-                    // Open inventory when entering portal
-                    if (window.openPlayerInventory) {
-                        window.openPlayerInventory()
-                        if (log) log.info('Opened inventory in portal')
-                    }
-                }
-
-                lastInPortal = inPortal
-            }, 100) // Check every 100ms
+            if (log) log.info('Portal GUI enabled - You can now open inventory in portals')
         } else {
-            if (portalCheckInterval) {
-                clearInterval(portalCheckInterval)
-                portalCheckInterval = null
-            }
-            lastInPortal = false
             if (log) log.info('Portal GUI disabled')
+        }
+    }
+
+    portalGUI.onTick = (bot) => {
+        if (!bot || !bot.entity) return
+
+        // Temporarily disable portal state to allow GUI opening
+        // The game blocks GUI opening when isInPortal is true
+        if (bot.entity.isInPortal) {
+            // Store original value
+            if (originalIsInPortal === null) {
+                originalIsInPortal = bot.entity.isInPortal
+            }
+            // Fake that we're not in portal (only for GUI checks)
+            bot.entity.isInPortal = false
+
+            // Restore it immediately after (next tick will set it again if needed)
+            setTimeout(() => {
+                if (bot.entity && originalIsInPortal !== null) {
+                    bot.entity.isInPortal = originalIsInPortal
+                    originalIsInPortal = null
+                }
+            }, 10)
         }
     }
 

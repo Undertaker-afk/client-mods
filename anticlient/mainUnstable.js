@@ -690,31 +690,29 @@ var loadMovementModules = () => {
     }
   };
   registerModule(invWalk);
-  const portalGUI = new Module("portalgui", "Portal GUI", "Movement", "Open inventory in nether portals");
-  let lastInPortal = false;
-  let portalCheckInterval = null;
+  const portalGUI = new Module("portalgui", "Portal GUI", "Movement", "Allow opening inventory in nether portals");
+  let originalIsInPortal = null;
   portalGUI.onToggle = (enabled) => {
     const log = window.anticlientLogger?.module("PortalGUI");
     if (enabled) {
-      if (log) log.info("Portal GUI enabled");
-      portalCheckInterval = setInterval(() => {
-        if (!window.bot) return;
-        const inPortal = window.bot.entity?.isInPortal || false;
-        if (inPortal && !lastInPortal) {
-          if (window.openPlayerInventory) {
-            window.openPlayerInventory();
-            if (log) log.info("Opened inventory in portal");
-          }
-        }
-        lastInPortal = inPortal;
-      }, 100);
+      if (log) log.info("Portal GUI enabled - You can now open inventory in portals");
     } else {
-      if (portalCheckInterval) {
-        clearInterval(portalCheckInterval);
-        portalCheckInterval = null;
-      }
-      lastInPortal = false;
       if (log) log.info("Portal GUI disabled");
+    }
+  };
+  portalGUI.onTick = (bot) => {
+    if (!bot || !bot.entity) return;
+    if (bot.entity.isInPortal) {
+      if (originalIsInPortal === null) {
+        originalIsInPortal = bot.entity.isInPortal;
+      }
+      bot.entity.isInPortal = false;
+      setTimeout(() => {
+        if (bot.entity && originalIsInPortal !== null) {
+          bot.entity.isInPortal = originalIsInPortal;
+          originalIsInPortal = null;
+        }
+      }, 10);
     }
   };
   registerModule(portalGUI);

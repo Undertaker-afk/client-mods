@@ -29,7 +29,7 @@
             "version": "1.7.0",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t \nLatest: Added Inventory Walk & Portal GUI modules, API Docs button in Scripting tab"
+            "description": "Hacked client for 2b2t \nLatest: Inventory Walk (move in GUIs), Portal GUI (open inv in portals), API Docs button"
         }
     ]
 }
