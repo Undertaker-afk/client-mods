@@ -2295,26 +2295,26 @@ var entry_default = (mod) => {
   loadWorldModules();
   loadClientModules();
   loadPacketsModules();
-  const loggerSettings = registerModule({
-    id: "loggersettings",
-    name: "Logger Settings",
-    category: "Settings",
-    description: "Configure logging level (0=Debug, 1=Info, 2=Warning, 3=Error, 4=None)",
-    enabled: true,
-    settings: {
-      logLevel: 1
-      // INFO by default
-    },
-    onToggle: () => {
-    },
-    onTick: () => {
-    }
-  });
+  const loggerSettings = new Module(
+    "loggersettings",
+    "Logger Settings",
+    "Settings",
+    "Configure logging level (0=Debug, 1=Info, 2=Warning, 3=Error, 4=None)",
+    { logLevel: 1 }
+    // INFO by default
+  );
+  loggerSettings.enabled = true;
+  loggerSettings.onToggle = () => {
+  };
+  loggerSettings.onTick = () => {
+  };
+  registerModule(loggerSettings);
   let lastLogLevel = loggerSettings.settings.logLevel;
   setInterval(() => {
     if (loggerSettings.settings.logLevel !== lastLogLevel) {
       lastLogLevel = loggerSettings.settings.logLevel;
       logger.setLevel(lastLogLevel);
+      logger.info(`Log level changed to ${lastLogLevel}`);
     }
   }, 100);
   logger.info(`Modules loaded. Total: ${Object.keys(modules).length}`);

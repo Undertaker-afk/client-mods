@@ -6,7 +6,7 @@ import { loadPlayerModules } from './src/modules/player.js'
 import { loadWorldModules } from './src/modules/world.js'
 import { loadClientModules } from './src/modules/client.js'
 import { loadPacketsModules } from './src/modules/packets.js'
-import { modules, registerModule } from './src/core/Module.js'
+import { Module, modules, registerModule } from './src/core/Module.js'
 import { initUI } from './src/ui/index.js'
 import { logger, LogLevel } from './src/logger.js'
 
@@ -30,18 +30,14 @@ export default (mod) => {
     loadPacketsModules()
 
     // Load Logger Settings Module
-    const loggerSettings = registerModule({
-        id: 'loggersettings',
-        name: 'Logger Settings',
-        category: 'Settings',
-        description: 'Configure logging level (0=Debug, 1=Info, 2=Warning, 3=Error, 4=None)',
-        enabled: true,
-        settings: {
-            logLevel: 1 // INFO by default
-        },
-        onToggle: () => {},
-        onTick: () => {}
-    })
+    const loggerSettings = new Module('loggersettings', 'Logger Settings', 'Settings',
+        'Configure logging level (0=Debug, 1=Info, 2=Warning, 3=Error, 4=None)',
+        { logLevel: 1 } // INFO by default
+    )
+    loggerSettings.enabled = true
+    loggerSettings.onToggle = () => {}
+    loggerSettings.onTick = () => {}
+    registerModule(loggerSettings)
 
     // Watch for log level changes
     let lastLogLevel = loggerSettings.settings.logLevel
@@ -49,6 +45,7 @@ export default (mod) => {
         if (loggerSettings.settings.logLevel !== lastLogLevel) {
             lastLogLevel = loggerSettings.settings.logLevel
             logger.setLevel(lastLogLevel)
+            logger.info(`Log level changed to ${lastLogLevel}`)
         }
     }, 100)
 
