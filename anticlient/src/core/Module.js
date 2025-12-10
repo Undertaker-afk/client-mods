@@ -47,9 +47,9 @@ export const categories = {
     'Render': [],
     'Player': [],
     'World': [],
-    'Client': [],
+    'Settings': [],
     'Packets': [],
-    'Settings': []
+    'Scripting': []
 }
 
 export const modules = {}

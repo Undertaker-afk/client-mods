@@ -43,9 +43,9 @@ var categories = {
   "Render": [],
   "Player": [],
   "World": [],
-  "Client": [],
+  "Settings": [],
   "Packets": [],
-  "Settings": []
+  "Scripting": []
 };
 var modules = {};
 var registerModule = (module) => {
@@ -1201,7 +1201,7 @@ var loadWorldModules = () => {
 
 // anticlient/src/modules/client.js
 var loadClientModules = () => {
-  const settings = new Module("client_settings", "Settings", "Client", "Client configuration", {
+  const settings = new Module("client_settings", "Client Settings", "Settings", "Client configuration", {
     theme: "Default",
     repo: "Undertaker-afk/client-mods"
     // For display mainly
@@ -1932,6 +1932,10 @@ var initUI = () => {
       renderPackets();
       return;
     }
+    if (activeTab === "Scripting") {
+      renderScripting();
+      return;
+    }
     const catMods = categories[activeTab] || [];
     if (!catMods.length) {
       const emptyMsg = document.createElement("div");
@@ -2162,6 +2166,232 @@ var initUI = () => {
       contentContainer.appendChild(modEl);
     });
   };
+  const renderScripting = () => {
+    contentContainer.style.padding = "15px";
+    const title = document.createElement("div");
+    title.textContent = "Scripting & Custom Packets";
+    title.style.fontSize = "1.2em";
+    title.style.fontWeight = "bold";
+    title.style.color = "#b388ff";
+    title.style.marginBottom = "15px";
+    contentContainer.appendChild(title);
+    const tabsContainer = document.createElement("div");
+    tabsContainer.style.display = "flex";
+    tabsContainer.style.gap = "10px";
+    tabsContainer.style.marginBottom = "15px";
+    tabsContainer.style.borderBottom = "1px solid #333";
+    let activeScriptTab = "editor";
+    const editorTab = document.createElement("div");
+    editorTab.textContent = "Script Editor";
+    editorTab.style.padding = "8px 16px";
+    editorTab.style.cursor = "pointer";
+    editorTab.style.borderBottom = "2px solid #b388ff";
+    editorTab.style.color = "#b388ff";
+    const packetTab = document.createElement("div");
+    packetTab.textContent = "Packet Sender";
+    packetTab.style.padding = "8px 16px";
+    packetTab.style.cursor = "pointer";
+    packetTab.style.borderBottom = "2px solid transparent";
+    packetTab.style.color = "#777";
+    const switchTab = (tab) => {
+      activeScriptTab = tab;
+      if (tab === "editor") {
+        editorTab.style.borderBottom = "2px solid #b388ff";
+        editorTab.style.color = "#b388ff";
+        packetTab.style.borderBottom = "2px solid transparent";
+        packetTab.style.color = "#777";
+        editorSection.style.display = "block";
+        packetSection.style.display = "none";
+      } else {
+        editorTab.style.borderBottom = "2px solid transparent";
+        editorTab.style.color = "#777";
+        packetTab.style.borderBottom = "2px solid #b388ff";
+        packetTab.style.color = "#b388ff";
+        editorSection.style.display = "none";
+        packetSection.style.display = "block";
+      }
+    };
+    editorTab.onclick = () => switchTab("editor");
+    packetTab.onclick = () => switchTab("packet");
+    tabsContainer.appendChild(editorTab);
+    tabsContainer.appendChild(packetTab);
+    contentContainer.appendChild(tabsContainer);
+    const editorSection = document.createElement("div");
+    const editorLabel = document.createElement("div");
+    editorLabel.textContent = "JavaScript Code (has access to window.bot):";
+    editorLabel.style.color = "#e0e0e0";
+    editorLabel.style.marginBottom = "8px";
+    editorSection.appendChild(editorLabel);
+    const codeEditor = document.createElement("textarea");
+    codeEditor.style.width = "100%";
+    codeEditor.style.height = "250px";
+    codeEditor.style.background = "#000";
+    codeEditor.style.color = "#0f0";
+    codeEditor.style.border = "1px solid #444";
+    codeEditor.style.padding = "10px";
+    codeEditor.style.fontFamily = "'Consolas', 'Monaco', monospace";
+    codeEditor.style.fontSize = "12px";
+    codeEditor.style.resize = "vertical";
+    codeEditor.style.borderRadius = "4px";
+    codeEditor.placeholder = '// Example:\n// bot.chat("Hello from script!")\n// console.log(bot.entity.position)';
+    codeEditor.value = localStorage.getItem("anticlient_script") || "";
+    codeEditor.oninput = () => {
+      localStorage.setItem("anticlient_script", codeEditor.value);
+    };
+    editorSection.appendChild(codeEditor);
+    const editorButtons = document.createElement("div");
+    editorButtons.style.display = "flex";
+    editorButtons.style.gap = "10px";
+    editorButtons.style.marginTop = "10px";
+    const runBtn = document.createElement("button");
+    runBtn.textContent = "Run Script";
+    runBtn.style.padding = "8px 16px";
+    runBtn.style.background = "#2e7d32";
+    runBtn.style.color = "white";
+    runBtn.style.border = "none";
+    runBtn.style.cursor = "pointer";
+    runBtn.style.borderRadius = "4px";
+    runBtn.style.fontWeight = "bold";
+    runBtn.onclick = () => {
+      try {
+        const result = eval(codeEditor.value);
+        console.log("Script result:", result);
+        alert("Script executed successfully! Check console for output.");
+      } catch (err) {
+        console.error("Script error:", err);
+        alert("Script error: " + err.message);
+      }
+    };
+    editorButtons.appendChild(runBtn);
+    const clearBtn = document.createElement("button");
+    clearBtn.textContent = "Clear";
+    clearBtn.style.padding = "8px 16px";
+    clearBtn.style.background = "#333";
+    clearBtn.style.color = "white";
+    clearBtn.style.border = "none";
+    clearBtn.style.cursor = "pointer";
+    clearBtn.style.borderRadius = "4px";
+    clearBtn.onclick = () => {
+      codeEditor.value = "";
+      localStorage.removeItem("anticlient_script");
+    };
+    editorButtons.appendChild(clearBtn);
+    editorSection.appendChild(editorButtons);
+    contentContainer.appendChild(editorSection);
+    const packetSection = document.createElement("div");
+    packetSection.style.display = "none";
+    const packetLabel = document.createElement("div");
+    packetLabel.textContent = "Packet Name:";
+    packetLabel.style.color = "#e0e0e0";
+    packetLabel.style.marginBottom = "8px";
+    packetSection.appendChild(packetLabel);
+    const packetNameInput = document.createElement("input");
+    packetNameInput.type = "text";
+    packetNameInput.placeholder = "e.g., chat, position, arm_animation";
+    packetNameInput.style.width = "100%";
+    packetNameInput.style.background = "#000";
+    packetNameInput.style.color = "white";
+    packetNameInput.style.border = "1px solid #444";
+    packetNameInput.style.padding = "8px";
+    packetNameInput.style.borderRadius = "4px";
+    packetNameInput.style.marginBottom = "15px";
+    packetNameInput.style.fontFamily = "'Consolas', 'Monaco', monospace";
+    packetSection.appendChild(packetNameInput);
+    const dataLabel = document.createElement("div");
+    dataLabel.textContent = "Packet Data (JSON):";
+    dataLabel.style.color = "#e0e0e0";
+    dataLabel.style.marginBottom = "8px";
+    packetSection.appendChild(dataLabel);
+    const packetDataInput = document.createElement("textarea");
+    packetDataInput.style.width = "100%";
+    packetDataInput.style.height = "200px";
+    packetDataInput.style.background = "#000";
+    packetDataInput.style.color = "#0f0";
+    packetDataInput.style.border = "1px solid #444";
+    packetDataInput.style.padding = "10px";
+    packetDataInput.style.fontFamily = "'Consolas', 'Monaco', monospace";
+    packetDataInput.style.fontSize = "12px";
+    packetDataInput.style.resize = "vertical";
+    packetDataInput.style.borderRadius = "4px";
+    packetDataInput.placeholder = '{\n  "message": "Hello World"\n}';
+    packetDataInput.value = localStorage.getItem("anticlient_packet_data") || "";
+    packetDataInput.oninput = () => {
+      localStorage.setItem("anticlient_packet_data", packetDataInput.value);
+    };
+    packetSection.appendChild(packetDataInput);
+    const packetButtons = document.createElement("div");
+    packetButtons.style.display = "flex";
+    packetButtons.style.gap = "10px";
+    packetButtons.style.marginTop = "10px";
+    const sendBtn = document.createElement("button");
+    sendBtn.textContent = "Send Packet";
+    sendBtn.style.padding = "8px 16px";
+    sendBtn.style.background = "#1976d2";
+    sendBtn.style.color = "white";
+    sendBtn.style.border = "none";
+    sendBtn.style.cursor = "pointer";
+    sendBtn.style.borderRadius = "4px";
+    sendBtn.style.fontWeight = "bold";
+    sendBtn.onclick = () => {
+      if (!window.bot || !window.bot._client) {
+        alert("Bot not connected!");
+        return;
+      }
+      const packetName = packetNameInput.value.trim();
+      if (!packetName) {
+        alert("Please enter a packet name!");
+        return;
+      }
+      try {
+        const packetData = packetDataInput.value.trim() ? JSON.parse(packetDataInput.value) : {};
+        window.bot._client.write(packetName, packetData);
+        console.log("Sent packet:", packetName, packetData);
+        alert("Packet sent successfully!");
+      } catch (err) {
+        console.error("Packet send error:", err);
+        alert("Error: " + err.message);
+      }
+    };
+    packetButtons.appendChild(sendBtn);
+    const clearPacketBtn = document.createElement("button");
+    clearPacketBtn.textContent = "Clear";
+    clearPacketBtn.style.padding = "8px 16px";
+    clearPacketBtn.style.background = "#333";
+    clearPacketBtn.style.color = "white";
+    clearPacketBtn.style.border = "none";
+    clearPacketBtn.style.cursor = "pointer";
+    clearPacketBtn.style.borderRadius = "4px";
+    clearPacketBtn.onclick = () => {
+      packetNameInput.value = "";
+      packetDataInput.value = "";
+      localStorage.removeItem("anticlient_packet_data");
+    };
+    packetButtons.appendChild(clearPacketBtn);
+    const templatesBtn = document.createElement("button");
+    templatesBtn.textContent = "Templates";
+    templatesBtn.style.padding = "8px 16px";
+    templatesBtn.style.background = "#7c4dff";
+    templatesBtn.style.color = "white";
+    templatesBtn.style.border = "none";
+    templatesBtn.style.cursor = "pointer";
+    templatesBtn.style.borderRadius = "4px";
+    templatesBtn.onclick = () => {
+      const templates = {
+        "chat": '{\n  "message": "Hello World"\n}',
+        "position": '{\n  "x": 0,\n  "y": 64,\n  "z": 0,\n  "onGround": true\n}',
+        "arm_animation": "{}",
+        "entity_action": '{\n  "entityId": 0,\n  "actionId": 0,\n  "jumpBoost": 0\n}'
+      };
+      const templateName = prompt("Choose template:\n- chat\n- position\n- arm_animation\n- entity_action");
+      if (templateName && templates[templateName]) {
+        packetNameInput.value = templateName;
+        packetDataInput.value = templates[templateName];
+      }
+    };
+    packetButtons.appendChild(templatesBtn);
+    packetSection.appendChild(packetButtons);
+    contentContainer.appendChild(packetSection);
+  };
   const renderPackets = () => {
     contentContainer.innerHTML = "";
     const packetViewer = modules["packetviewer"];
@@ -2231,19 +2461,19 @@ var initUI = () => {
       packetViewer.settings.direction = e.target.value;
     };
     controlsDiv.appendChild(directionSelect);
-    const clearBtn = document.createElement("button");
-    clearBtn.textContent = "Clear";
-    clearBtn.style.padding = "4px 12px";
-    clearBtn.style.background = "#333";
-    clearBtn.style.color = "white";
-    clearBtn.style.border = "1px solid #444";
-    clearBtn.style.cursor = "pointer";
-    clearBtn.style.borderRadius = "2px";
-    clearBtn.onclick = () => {
+    const clearBtn2 = document.createElement("button");
+    clearBtn2.textContent = "Clear";
+    clearBtn2.style.padding = "4px 12px";
+    clearBtn2.style.background = "#333";
+    clearBtn2.style.color = "white";
+    clearBtn2.style.border = "1px solid #444";
+    clearBtn2.style.cursor = "pointer";
+    clearBtn2.style.borderRadius = "2px";
+    clearBtn2.onclick = () => {
       packetViewer.packets = [];
       renderPackets();
     };
-    controlsDiv.appendChild(clearBtn);
+    controlsDiv.appendChild(clearBtn2);
     contentContainer.appendChild(controlsDiv);
     const packetList = document.createElement("div");
     packetList.style.maxHeight = "400px";

@@ -4,7 +4,7 @@ import { Module, registerModule } from '../core/Module.js'
 export const loadClientModules = () => {
     // -- Settings Module --
     // We add a 'Settings' module that acts as a container for client-wide configs
-    const settings = new Module('client_settings', 'Settings', 'Client', 'Client configuration', {
+    const settings = new Module('client_settings', 'Client Settings', 'Settings', 'Client configuration', {
         theme: 'Default',
         repo: 'Undertaker-afk/client-mods' // For display mainly
     })
