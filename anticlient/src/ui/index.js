@@ -1356,6 +1356,7 @@ export const initUI = () => {
             settingsGrid.appendChild(createSetting('Random Jitter (ms)', 'number', 'randomJitter', { max: 500 }))
             settingsGrid.appendChild(createSetting('Burst Interval (ms)', 'number', 'burstInterval', { max: 10000 }))
             settingsGrid.appendChild(createSetting('Burst Mode', 'checkbox', 'burstMode'))
+            settingsGrid.appendChild(createSetting('Show on HUD', 'checkbox', 'onHUD'))
 
             const filterRow = createSetting('Packet Filter (comma separated)', 'text', 'packetFilter', { placeholder: 'position,look,chat' })
             filterRow.style.gridColumn = '1 / -1'
@@ -1712,7 +1713,13 @@ export const initUI = () => {
 
     // Update blink indicator
     const blinkUpdateInterval = setInterval(() => {
-        if (window.anticlient?.blinkUI?.active) {
+        const modules = window.anticlient?.modules || {}
+        const blink = modules['blink']
+
+        // Only show center indicator if onHUD is disabled
+        const showCenterIndicator = !blink?.settings?.onHUD
+
+        if (window.anticlient?.blinkUI?.active && showCenterIndicator) {
             blinkIndicator.style.display = 'block'
             const positions = window.anticlient.blinkUI.positions || 0
             const duration = (window.anticlient.blinkUI.duration || 0) / 1000
@@ -1720,6 +1727,248 @@ export const initUI = () => {
             document.getElementById('blink-time').textContent = duration.toFixed(1)
         } else {
             blinkIndicator.style.display = 'none'
+        }
+    }, 50)
+
+    // --- HUD Overlay System ---
+    const hudContainer = document.createElement('div')
+    hudContainer.id = 'anticlient-hud'
+    hudContainer.style.position = 'fixed'
+    hudContainer.style.top = '10px'
+    hudContainer.style.right = '10px'
+    hudContainer.style.zIndex = '9998'
+    hudContainer.style.pointerEvents = 'none'
+    hudContainer.style.display = 'flex'
+    hudContainer.style.flexDirection = 'column'
+    hudContainer.style.gap = '10px'
+    hudContainer.style.fontFamily = 'monospace'
+    hudContainer.style.fontSize = '12px'
+    document.body.appendChild(hudContainer)
+
+    // Update HUD every 50ms
+    const hudUpdateInterval = setInterval(() => {
+        hudContainer.innerHTML = ''
+
+        const modules = window.anticlient?.modules || {}
+        const fakeLag = modules['fakelag']
+        const blink = modules['blink']
+
+        // Blink HUD
+        if (blink && blink.enabled && blink.settings.onHUD && window.anticlient?.blinkUI?.active) {
+            const blinkUI = window.anticlient.blinkUI
+
+            const panel = document.createElement('div')
+            panel.style.background = 'rgba(124, 77, 255, 0.85)'
+            panel.style.border = '2px solid #7c4dff'
+            panel.style.borderRadius = '6px'
+            panel.style.padding = '10px 14px'
+            panel.style.minWidth = '220px'
+            panel.style.backdropFilter = 'blur(4px)'
+            panel.style.boxShadow = '0 0 20px rgba(124, 77, 255, 0.6)'
+
+            const title = document.createElement('div')
+            title.textContent = '🔮 RECORDING BACKTRACK'
+            title.style.color = 'white'
+            title.style.fontWeight = 'bold'
+            title.style.marginBottom = '8px'
+            title.style.fontSize = '14px'
+            title.style.textShadow = '0 0 5px rgba(255, 255, 255, 0.5)'
+            title.style.textAlign = 'center'
+            panel.appendChild(title)
+
+            // Progress bar for time
+            const maxTime = blink.settings.maxRecordTime
+            const currentTime = blinkUI.duration || 0
+            const timePercentage = (currentTime / maxTime) * 100
+
+            const progressContainer = document.createElement('div')
+            progressContainer.style.width = '100%'
+            progressContainer.style.height = '8px'
+            progressContainer.style.background = '#1a1a1a'
+            progressContainer.style.borderRadius = '4px'
+            progressContainer.style.overflow = 'hidden'
+            progressContainer.style.marginBottom = '8px'
+            progressContainer.style.border = '1px solid rgba(255, 255, 255, 0.3)'
+
+            const progressBar = document.createElement('div')
+            progressBar.style.width = `${timePercentage}%`
+            progressBar.style.height = '100%'
+            progressBar.style.transition = 'width 0.05s linear, background 0.2s'
+
+            // Color based on time used
+            if (timePercentage > 80) {
+                progressBar.style.background = 'linear-gradient(90deg, #ff0000, #ff4444)'
+                progressBar.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.8)'
+            } else if (timePercentage > 50) {
+                progressBar.style.background = 'linear-gradient(90deg, #ffaa00, #ffcc44)'
+                progressBar.style.boxShadow = '0 0 8px rgba(255, 170, 0, 0.8)'
+            } else {
+                progressBar.style.background = 'linear-gradient(90deg, #00ff00, #44ff44)'
+                progressBar.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.8)'
+            }
+
+            progressContainer.appendChild(progressBar)
+            panel.appendChild(progressContainer)
+
+            // Stats grid
+            const stats = document.createElement('div')
+            stats.style.display = 'grid'
+            stats.style.gridTemplateColumns = '1fr 1fr'
+            stats.style.gap = '8px'
+            stats.style.fontSize = '11px'
+            stats.style.borderTop = '1px solid rgba(255, 255, 255, 0.3)'
+            stats.style.paddingTop = '8px'
+
+            const createStat = (label, value, color = '#fff') => {
+                const stat = document.createElement('div')
+                stat.style.textAlign = 'center'
+
+                const valueEl = document.createElement('div')
+                valueEl.textContent = value
+                valueEl.style.color = color
+                valueEl.style.fontWeight = 'bold'
+                valueEl.style.fontSize = '18px'
+                valueEl.style.marginBottom = '2px'
+                valueEl.style.textShadow = `0 0 5px ${color}`
+                stat.appendChild(valueEl)
+
+                const labelEl = document.createElement('div')
+                labelEl.textContent = label
+                labelEl.style.color = 'rgba(255, 255, 255, 0.8)'
+                labelEl.style.fontSize = '9px'
+                labelEl.style.textTransform = 'uppercase'
+                stat.appendChild(labelEl)
+
+                return stat
+            }
+
+            const positions = blinkUI.positions || 0
+            const duration = ((blinkUI.duration || 0) / 1000).toFixed(1)
+
+            stats.appendChild(createStat('Positions', positions, '#ffffff'))
+            stats.appendChild(createStat('Time', `${duration}s`, '#ffffff'))
+
+            panel.appendChild(stats)
+
+            // Hint
+            const hint = document.createElement('div')
+            hint.textContent = 'Release B to teleport back'
+            hint.style.color = 'rgba(255, 255, 255, 0.7)'
+            hint.style.fontSize = '10px'
+            hint.style.textAlign = 'center'
+            hint.style.marginTop = '8px'
+            panel.appendChild(hint)
+
+            hudContainer.appendChild(panel)
+        }
+
+        // Fake Lag HUD
+        if (fakeLag && fakeLag.enabled && fakeLag.settings.onHUD && fakeLag.settings.burstMode) {
+            const queueInfo = fakeLag.getQueueInfo()
+
+            const panel = document.createElement('div')
+            panel.style.background = 'rgba(0, 0, 0, 0.8)'
+            panel.style.border = '2px solid #00ffff'
+            panel.style.borderRadius = '6px'
+            panel.style.padding = '10px 14px'
+            panel.style.minWidth = '220px'
+            panel.style.backdropFilter = 'blur(4px)'
+            panel.style.boxShadow = '0 0 15px rgba(0, 255, 255, 0.3)'
+
+            const title = document.createElement('div')
+            title.textContent = '🌐 Fake Lag'
+            title.style.color = '#00ffff'
+            title.style.fontWeight = 'bold'
+            title.style.marginBottom = '8px'
+            title.style.fontSize = '14px'
+            title.style.textShadow = '0 0 5px rgba(0, 255, 255, 0.5)'
+            panel.appendChild(title)
+
+            // Progress bar for countdown
+            const progressLabel = document.createElement('div')
+            progressLabel.textContent = 'Next Burst'
+            progressLabel.style.color = '#aaa'
+            progressLabel.style.fontSize = '10px'
+            progressLabel.style.marginBottom = '4px'
+            panel.appendChild(progressLabel)
+
+            const progressContainer = document.createElement('div')
+            progressContainer.style.width = '100%'
+            progressContainer.style.height = '8px'
+            progressContainer.style.background = '#1a1a1a'
+            progressContainer.style.borderRadius = '4px'
+            progressContainer.style.overflow = 'hidden'
+            progressContainer.style.marginBottom = '8px'
+            progressContainer.style.border = '1px solid #333'
+
+            const progressBar = document.createElement('div')
+            const percentage = (queueInfo.nextBurstIn / queueInfo.burstInterval) * 100
+            progressBar.style.width = `${percentage}%`
+            progressBar.style.height = '100%'
+            progressBar.style.transition = 'width 0.05s linear, background 0.2s'
+
+            // Color based on time remaining
+            if (percentage < 20) {
+                progressBar.style.background = 'linear-gradient(90deg, #ff0000, #ff4444)'
+                progressBar.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.6)'
+            } else if (percentage < 50) {
+                progressBar.style.background = 'linear-gradient(90deg, #ffaa00, #ffcc44)'
+                progressBar.style.boxShadow = '0 0 8px rgba(255, 170, 0, 0.6)'
+            } else {
+                progressBar.style.background = 'linear-gradient(90deg, #00ff00, #44ff44)'
+                progressBar.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.6)'
+            }
+
+            progressContainer.appendChild(progressBar)
+            panel.appendChild(progressContainer)
+
+            // Time display
+            const timeDisplay = document.createElement('div')
+            timeDisplay.textContent = `${Math.round(queueInfo.nextBurstIn)}ms`
+            timeDisplay.style.color = '#fff'
+            timeDisplay.style.fontSize = '16px'
+            timeDisplay.style.fontWeight = 'bold'
+            timeDisplay.style.textAlign = 'center'
+            timeDisplay.style.marginBottom = '8px'
+            panel.appendChild(timeDisplay)
+
+            // Stats grid
+            const stats = document.createElement('div')
+            stats.style.display = 'grid'
+            stats.style.gridTemplateColumns = '1fr 1fr 1fr'
+            stats.style.gap = '8px'
+            stats.style.fontSize = '11px'
+            stats.style.borderTop = '1px solid #333'
+            stats.style.paddingTop = '8px'
+
+            const createStat = (label, value, color = '#fff') => {
+                const stat = document.createElement('div')
+                stat.style.textAlign = 'center'
+
+                const valueEl = document.createElement('div')
+                valueEl.textContent = value
+                valueEl.style.color = color
+                valueEl.style.fontWeight = 'bold'
+                valueEl.style.fontSize = '16px'
+                valueEl.style.marginBottom = '2px'
+                stat.appendChild(valueEl)
+
+                const labelEl = document.createElement('div')
+                labelEl.textContent = label
+                labelEl.style.color = '#888'
+                labelEl.style.fontSize = '9px'
+                labelEl.style.textTransform = 'uppercase'
+                stat.appendChild(labelEl)
+
+                return stat
+            }
+
+            stats.appendChild(createStat('Total', queueInfo.totalCount, '#00ffff'))
+            stats.appendChild(createStat('Out', queueInfo.outgoingCount, '#00ff00'))
+            stats.appendChild(createStat('In', queueInfo.incomingCount, '#ff00ff'))
+
+            panel.appendChild(stats)
+            hudContainer.appendChild(panel)
         }
     }, 50)
 
@@ -1737,9 +1986,11 @@ export const initUI = () => {
         if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot)
         if (blockSelectorModal && blockSelectorModal.parentNode) blockSelectorModal.parentNode.removeChild(blockSelectorModal)
         if (blinkIndicator && blinkIndicator.parentNode) blinkIndicator.parentNode.removeChild(blinkIndicator)
+        if (hudContainer && hudContainer.parentNode) hudContainer.parentNode.removeChild(hudContainer)
         if (style && style.parentNode) style.parentNode.removeChild(style)
         if (previewInterval) clearInterval(previewInterval)
         if (blinkUpdateInterval) clearInterval(blinkUpdateInterval)
+        if (hudUpdateInterval) clearInterval(hudUpdateInterval)
         window.removeEventListener('keydown', keydownHandler)
         window.removeEventListener("mouseup", dragEnd)
         window.removeEventListener("mousemove", drag)

@@ -341,7 +341,8 @@ export const loadMovementModules = () => {
     // -- Blink/Backtrack --
     const blink = new Module('blink', 'Blink', 'Movement', 'Record positions and teleport back', {
         recordInterval: 50, // ms between position recordings
-        maxRecordTime: 10000 // 10 seconds max
+        maxRecordTime: 10000, // 10 seconds max
+        onHUD: false // Show on HUD overlay
     })
 
     let positionHistory = [] // Array of {pos, time}

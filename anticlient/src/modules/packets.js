@@ -121,7 +121,8 @@ export const loadPacketsModules = () => {
         packetFilter: '', // Filter specific packets (comma separated)
         randomJitter: 0, // Random jitter in ms (0-100)
         burstMode: false, // Send all delayed packets at once
-        burstInterval: 1000 // ms between bursts
+        burstInterval: 1000, // ms between bursts
+        onHUD: false // Show on HUD overlay
     })
 
     let outgoingQueue = []
