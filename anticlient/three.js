@@ -34,10 +34,10 @@ export const worldReady = (world) => {
             map: texture,
             depthTest: false,
             depthWrite: false,
-            sizeAttenuation: false
+            sizeAttenuation: true // Enable distance scaling
         })
         const sprite = new THREE.Sprite(spriteMaterial)
-        sprite.scale.set(2, 0.5, 1)
+        sprite.scale.set(0.5, 0.125, 1) // Smaller base scale since it will scale with distance
         sprite.renderOrder = 999 // Render on top of everything
         return sprite
     }
