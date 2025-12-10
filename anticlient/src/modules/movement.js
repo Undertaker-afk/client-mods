@@ -420,4 +420,121 @@ export const loadMovementModules = () => {
             }
         }
     }
+
+    // -- Inventory Walk --
+    const invWalk = new Module('invwalk', 'Inventory Walk', 'Movement', 'Move while inventory/GUI is open')
+
+    let keyListeners = {}
+    let activeKeys = {
+        forward: false,
+        back: false,
+        left: false,
+        right: false,
+        jump: false,
+        sneak: false
+    }
+
+    const keyMap = {
+        'KeyW': 'forward',
+        'KeyS': 'back',
+        'KeyA': 'left',
+        'KeyD': 'right',
+        'Space': 'jump',
+        'ShiftLeft': 'sneak'
+    }
+
+    const handleKeyDown = (e) => {
+        const control = keyMap[e.code]
+        if (!control) return
+
+        // Check if any modal is active (not in foreground)
+        if (window.activeModalStack && window.activeModalStack.length > 0) {
+            if (!activeKeys[control]) {
+                activeKeys[control] = true
+                if (window.bot) {
+                    window.bot.setControlState(control, true)
+                }
+            }
+        }
+    }
+
+    const handleKeyUp = (e) => {
+        const control = keyMap[e.code]
+        if (!control) return
+
+        if (activeKeys[control]) {
+            activeKeys[control] = false
+            if (window.bot) {
+                window.bot.setControlState(control, false)
+            }
+        }
+    }
+
+    invWalk.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('InvWalk')
+        if (enabled) {
+            // Add keyboard listeners
+            keyListeners.down = handleKeyDown
+            keyListeners.up = handleKeyUp
+            window.addEventListener('keydown', keyListeners.down, true)
+            window.addEventListener('keyup', keyListeners.up, true)
+            if (log) log.info('Inventory Walk enabled - WASD works in GUIs')
+        } else {
+            // Remove keyboard listeners
+            window.removeEventListener('keydown', keyListeners.down, true)
+            window.removeEventListener('keyup', keyListeners.up, true)
+            keyListeners = {}
+            // Clear all active keys
+            if (window.bot) {
+                for (const control in activeKeys) {
+                    if (activeKeys[control]) {
+                        window.bot.setControlState(control, false)
+                        activeKeys[control] = false
+                    }
+                }
+            }
+            if (log) log.info('Inventory Walk disabled')
+        }
+    }
+
+    registerModule(invWalk)
+
+    // -- Portal GUI --
+    const portalGUI = new Module('portalgui', 'Portal GUI', 'Movement', 'Open inventory in nether portals')
+
+    let lastInPortal = false
+    let portalCheckInterval = null
+
+    portalGUI.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('PortalGUI')
+        if (enabled) {
+            if (log) log.info('Portal GUI enabled')
+            // Start checking for portal
+            portalCheckInterval = setInterval(() => {
+                if (!window.bot) return
+
+                const inPortal = window.bot.entity?.isInPortal || false
+
+                // Detect entering portal
+                if (inPortal && !lastInPortal) {
+                    // Open inventory when entering portal
+                    if (window.openPlayerInventory) {
+                        window.openPlayerInventory()
+                        if (log) log.info('Opened inventory in portal')
+                    }
+                }
+
+                lastInPortal = inPortal
+            }, 100) // Check every 100ms
+        } else {
+            if (portalCheckInterval) {
+                clearInterval(portalCheckInterval)
+                portalCheckInterval = null
+            }
+            lastInPortal = false
+            if (log) log.info('Portal GUI disabled')
+        }
+    }
+
+    registerModule(portalGUI)
 }

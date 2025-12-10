@@ -26,10 +26,10 @@
         },
         {
             "name": "anticlient",
-            "version": "1.6.0",
+            "version": "1.7.0",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t \nLatest: Added Scripting tab with code editor & custom packet sender, combined Client/Settings tabs, improved ESP text scaling"
+            "description": "Hacked client for 2b2t \nLatest: Added Inventory Walk & Portal GUI modules, API Docs button in Scripting tab"
         }
     ]
 }
