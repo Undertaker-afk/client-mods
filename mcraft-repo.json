@@ -1,0 +1,35 @@
+{
+    "packages": [
+        {
+            "name": "zardoy.waila",
+            "version": "0.0.5",
+            "scriptMainUnstable": true,
+            "description": "WAILA - block/entity cursor info"
+        },
+        {
+            "name": "zardoy.random-drops",
+            "version": "0.0.5",
+            "serverPlugin": true,
+            "description": "Random block drops!"
+        },
+        {
+            "name": "zardoy.panorama-random-mobs",
+            "version": "0.0.1",
+            "threeJsBackend": true,
+            "description": "Replace panorama mobs with random mobs"
+        },
+        {
+            "name": "zardoy.blurry-backdrops",
+            "version": "0.0.1",
+            "stylesGlobal": true,
+            "description": "Add blur to backdrops like in new Minecraft"
+        },
+        {
+            "name": "anticlient",
+            "version": "1.0.0",
+            "scriptMainUnstable": true,
+            "threeJsBackend": true,
+            "description": "Hacked client for 2b2t"
+        }
+    ]
+}

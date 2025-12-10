@@ -1,0 +1,287 @@
+
+import { categories, modules } from '../core/Module.js'
+
+export const initUI = () => {
+    const uiRoot = document.createElement('div')
+    uiRoot.id = 'anticlient-root'
+    uiRoot.style.position = 'fixed'
+    uiRoot.style.top = '20px'
+    uiRoot.style.left = '20px'
+    uiRoot.style.zIndex = '10000'
+    uiRoot.style.fontFamily = "'Consolas', 'Monaco', monospace"
+    uiRoot.style.userSelect = 'none'
+    uiRoot.style.display = 'none'
+
+    const toggleUi = () => {
+        uiRoot.style.display = uiRoot.style.display === 'none' ? 'block' : 'none'
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'ArrowRight' && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
+            toggleUi()
+        }
+    })
+
+    const style = document.createElement('style')
+    style.textContent = `
+    .ac-window {
+        background-color: #0f0f13;
+        border: 2px solid #7c4dff;
+        border-radius: 8px;
+        width: 450px;
+        box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
+        color: #e0e0e0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .ac-header {
+        background-color: #1a1a20;
+        padding: 10px 15px;
+        border-bottom: 2px solid #7c4dff;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: move;
+    }
+    .ac-title {
+        font-weight: bold;
+        color: #b388ff;
+        font-size: 1.1em;
+        letter-spacing: 1px;
+    }
+    .ac-tabs {
+        display: flex;
+        background-color: #15151a;
+        margin: 0;
+        padding: 0;
+    }
+    .ac-tab {
+        flex: 1;
+        text-align: center;
+        padding: 10px 0;
+        cursor: pointer;
+        background-color: #15151a;
+        transition: background-color 0.2s, color 0.2s;
+        border-bottom: 2px solid transparent;
+        color: #777;
+    }
+    .ac-tab:hover {
+        background-color: #20202a;
+        color: #fff;
+    }
+    .ac-tab.active {
+        color: #b388ff;
+        border-bottom: 2px solid #b388ff;
+        background-color: #252530;
+    }
+    .ac-content {
+        padding: 15px;
+        max-height: 400px;
+        overflow-y: auto;
+        background-color: #0f0f13;
+    }
+    .ac-module {
+        background-color: #1a1a20;
+        margin-bottom: 8px;
+        padding: 10px;
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        border-left: 3px solid #333;
+        transition: border-left-color 0.2s;
+    }
+    .ac-module.enabled {
+        border-left: 3px solid #00e676;
+    }
+    .ac-module-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+    }
+    .ac-module-name {
+        font-weight: bold;
+    }
+    .ac-module-settings {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #333;
+        display: none;
+    }
+    .ac-module-settings.open {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .ac-setting-row { 
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.9em;
+    }
+    .ac-input-number {
+        background: #000;
+        border: 1px solid #444;
+        color: white;
+        width: 50px;
+        padding: 2px;
+        border-radius: 2px;
+    }
+    .ac-checkbox {
+       accent-color: #7c4dff;
+    }
+    .ac-content::-webkit-scrollbar {
+        width: 8px;
+    }
+    .ac-content::-webkit-scrollbar-track {
+        background: #0f0f13;
+    }
+    .ac-content::-webkit-scrollbar-thumb {
+        background: #333;
+        border-radius: 4px;
+    }
+    `
+    document.head.appendChild(style)
+
+    const windowEl = document.createElement('div')
+    windowEl.className = 'ac-window'
+    uiRoot.appendChild(windowEl)
+
+    const header = document.createElement('div')
+    header.className = 'ac-header'
+    header.innerHTML = '<span class="ac-title">ANTICLIENT</span> <span style="font-size: 0.8em; color: gray">v1.3</span>'
+    windowEl.appendChild(header)
+
+    const tabsContainer = document.createElement('div')
+    tabsContainer.className = 'ac-tabs'
+    windowEl.appendChild(tabsContainer)
+
+    const contentContainer = document.createElement('div')
+    contentContainer.className = 'ac-content'
+    windowEl.appendChild(contentContainer)
+
+    document.body.appendChild(uiRoot)
+
+    // UI Logic
+    let activeTab = 'Movement'
+
+    const renderModules = () => {
+        contentContainer.innerHTML = ''
+        const catMods = categories[activeTab] || []
+        catMods.forEach(mod => {
+            const modEl = document.createElement('div')
+            modEl.className = 'ac-module' + (mod.enabled ? ' enabled' : '')
+            mod.uiElement = modEl
+
+            const header = document.createElement('div')
+            header.className = 'ac-module-header'
+            header.innerHTML = `<span class="ac-module-name">${mod.name}</span> <span style="font-size:0.8em; color: #555">▼</span>`
+            header.onclick = () => mod.toggle()
+            header.oncontextmenu = (e) => {
+                e.preventDefault()
+                const settingsEl = modEl.querySelector('.ac-module-settings')
+                settingsEl.classList.toggle('open')
+            }
+            modEl.appendChild(header)
+
+            const settingsDiv = document.createElement('div')
+            settingsDiv.className = 'ac-module-settings'
+
+            Object.keys(mod.settings).forEach(key => {
+                const row = document.createElement('div')
+                row.className = 'ac-setting-row'
+                const label = document.createElement('span')
+                label.textContent = key
+                row.appendChild(label)
+
+                const val = mod.settings[key]
+                if (typeof val === 'number') {
+                    const input = document.createElement('input')
+                    input.type = 'number'
+                    input.className = 'ac-input-number'
+                    input.value = val
+                    input.step = 0.1
+                    input.onchange = (e) => mod.settings[key] = parseFloat(e.target.value)
+                    row.appendChild(input)
+                } else if (typeof val === 'boolean') {
+                    const input = document.createElement('input')
+                    input.type = 'checkbox'
+                    input.className = 'ac-checkbox'
+                    input.checked = val
+                    input.onchange = (e) => mod.settings[key] = e.target.checked
+                    row.appendChild(input)
+                } else {
+                    const input = document.createElement('input')
+                    input.value = val
+                    input.style.background = 'black'
+                    input.style.color = 'white'
+                    input.style.border = '1px solid #444'
+                    input.onchange = (e) => mod.settings[key] = e.target.value
+                    row.appendChild(input)
+                }
+                settingsDiv.appendChild(row)
+            })
+
+            modEl.appendChild(settingsDiv)
+            contentContainer.appendChild(modEl)
+        })
+    }
+
+    const renderTabs = () => {
+        tabsContainer.innerHTML = ''
+        Object.keys(categories).forEach(cat => {
+            const tab = document.createElement('div')
+            tab.className = 'ac-tab' + (cat === activeTab ? ' active' : '')
+            tab.textContent = cat
+            tab.onclick = () => {
+                activeTab = cat
+                renderTabs()
+                renderModules()
+            }
+            tabsContainer.appendChild(tab)
+        })
+    }
+
+    renderTabs()
+    renderModules()
+
+    // Drag Logic
+    let isDragging = false
+    let currentX;
+    let currentY;
+    let initialX;
+    let initialY;
+    let xOffset = 0;
+    let yOffset = 0;
+
+    header.addEventListener("mousedown", dragStart);
+    window.addEventListener("mouseup", dragEnd);
+    window.addEventListener("mousemove", drag);
+
+    function dragStart(e) {
+        initialX = e.clientX - xOffset;
+        initialY = e.clientY - yOffset;
+        if (e.target === header || e.target.closest('.ac-header')) {
+            isDragging = true;
+        }
+    }
+    function dragEnd(e) {
+        initialX = currentX;
+        initialY = currentY;
+        isDragging = false;
+    }
+    function drag(e) {
+        if (isDragging) {
+            e.preventDefault();
+            currentX = e.clientX - initialX;
+            currentY = e.clientY - initialY;
+            xOffset = currentX;
+            yOffset = currentY;
+            setTranslate(currentX, currentY, uiRoot);
+        }
+    }
+    function setTranslate(xPos, yPos, el) {
+        el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
+    }
+}

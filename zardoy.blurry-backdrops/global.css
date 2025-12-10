@@ -1,0 +1,5 @@
+.backdrop {
+    background: unset !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+}
