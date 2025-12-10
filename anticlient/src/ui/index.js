@@ -251,6 +251,242 @@ export const initUI = () => {
 
     document.body.appendChild(uiRoot)
 
+    // Block Selector Modal
+    const blockSelectorModal = document.createElement('div')
+    blockSelectorModal.id = 'ac-block-selector-modal'
+    blockSelectorModal.style.display = 'none'
+    blockSelectorModal.style.position = 'fixed'
+    blockSelectorModal.style.top = '0'
+    blockSelectorModal.style.left = '0'
+    blockSelectorModal.style.width = '100%'
+    blockSelectorModal.style.height = '100%'
+    blockSelectorModal.style.backgroundColor = 'rgba(0, 0, 0, 0.8)'
+    blockSelectorModal.style.zIndex = '20000'
+    blockSelectorModal.style.display = 'none'
+    blockSelectorModal.style.alignItems = 'center'
+    blockSelectorModal.style.justifyContent = 'center'
+
+    const blockSelectorContent = document.createElement('div')
+    blockSelectorContent.style.backgroundColor = '#0f0f13'
+    blockSelectorContent.style.border = '2px solid #7c4dff'
+    blockSelectorContent.style.borderRadius = '8px'
+    blockSelectorContent.style.padding = '20px'
+    blockSelectorContent.style.maxWidth = '600px'
+    blockSelectorContent.style.maxHeight = '80vh'
+    blockSelectorContent.style.width = '90%'
+    blockSelectorContent.style.display = 'flex'
+    blockSelectorContent.style.flexDirection = 'column'
+    blockSelectorContent.style.gap = '15px'
+
+    const blockSelectorTitle = document.createElement('div')
+    blockSelectorTitle.textContent = 'Select Blocks'
+    blockSelectorTitle.style.fontSize = '1.2em'
+    blockSelectorTitle.style.fontWeight = 'bold'
+    blockSelectorTitle.style.color = '#7c4dff'
+    blockSelectorTitle.style.textAlign = 'center'
+    blockSelectorContent.appendChild(blockSelectorTitle)
+
+    const blockSearchInput = document.createElement('input')
+    blockSearchInput.type = 'text'
+    blockSearchInput.placeholder = 'Search blocks...'
+    blockSearchInput.style.padding = '8px'
+    blockSearchInput.style.backgroundColor = '#1a1a20'
+    blockSearchInput.style.color = '#e0e0e0'
+    blockSearchInput.style.border = '1px solid #444'
+    blockSearchInput.style.borderRadius = '4px'
+    blockSearchInput.style.fontSize = '0.9em'
+    blockSelectorContent.appendChild(blockSearchInput)
+
+    const blockListContainer = document.createElement('div')
+    blockListContainer.style.overflowY = 'auto'
+    blockListContainer.style.maxHeight = '400px'
+    blockListContainer.style.display = 'flex'
+    blockListContainer.style.flexDirection = 'column'
+    blockListContainer.style.gap = '5px'
+    blockSelectorContent.appendChild(blockListContainer)
+
+    const blockSelectorButtons = document.createElement('div')
+    blockSelectorButtons.style.display = 'flex'
+    blockSelectorButtons.style.gap = '10px'
+    blockSelectorButtons.style.justifyContent = 'flex-end'
+
+    const blockSelectorClose = document.createElement('button')
+    blockSelectorClose.textContent = 'Close'
+    blockSelectorClose.style.padding = '8px 16px'
+    blockSelectorClose.style.backgroundColor = '#333'
+    blockSelectorClose.style.color = 'white'
+    blockSelectorClose.style.border = 'none'
+    blockSelectorClose.style.borderRadius = '4px'
+    blockSelectorClose.style.cursor = 'pointer'
+    blockSelectorClose.onclick = () => {
+        blockSelectorModal.style.display = 'none'
+        // Re-render modules to update the block count
+        renderModules()
+    }
+    blockSelectorButtons.appendChild(blockSelectorClose)
+
+    blockSelectorContent.appendChild(blockSelectorButtons)
+    blockSelectorModal.appendChild(blockSelectorContent)
+    document.body.appendChild(blockSelectorModal)
+
+    // Block selector state
+    let currentBlockModule = null
+
+    const openBlockSelector = (module) => {
+        currentBlockModule = module
+        blockSelectorModal.style.display = 'flex'
+        blockSearchInput.value = ''
+        renderBlockList()
+    }
+
+    const createBlockTextureCanvas = (blockName) => {
+        try {
+            // Try to get texture from resourcesManager
+            const resourcesManager = window.resourcesManager || window.globalThis?.resourcesManager
+            if (!resourcesManager?.currentResources?.blocksAtlasJson) {
+                return null
+            }
+
+            const atlas = resourcesManager.currentResources.blocksAtlasJson
+            const atlasImage = resourcesManager.currentResources.blocksAtlasImage
+
+            if (!atlas || !atlasImage) return null
+
+            // Try to find texture for this block
+            const textureInfo = atlas.textures[blockName]
+            if (!textureInfo) return null
+
+            // Create canvas to draw the texture
+            const canvas = document.createElement('canvas')
+            const tileSize = atlas.tileSize || 16
+            canvas.width = tileSize
+            canvas.height = tileSize
+            const ctx = canvas.getContext('2d')
+            if (!ctx) return null
+
+            // Calculate source coordinates
+            const sx = textureInfo.u * atlasImage.width
+            const sy = textureInfo.v * atlasImage.height
+            const sw = (textureInfo.su || atlas.suSv) * atlasImage.width
+            const sh = (textureInfo.sv || atlas.suSv) * atlasImage.height
+
+            // Draw the texture from the atlas
+            ctx.drawImage(atlasImage, sx, sy, sw, sh, 0, 0, tileSize, tileSize)
+
+            return canvas
+        } catch (err) {
+            console.debug('Failed to get texture for block:', blockName, err)
+            return null
+        }
+    }
+
+    const renderBlockList = () => {
+        blockListContainer.innerHTML = ''
+
+        if (!window.bot || !window.bot.registry || !window.bot.registry.blocksByName) {
+            const errorMsg = document.createElement('div')
+            errorMsg.textContent = 'Please connect to a server first to load block data.'
+            errorMsg.style.color = '#ff5555'
+            errorMsg.style.textAlign = 'center'
+            errorMsg.style.padding = '20px'
+            blockListContainer.appendChild(errorMsg)
+            return
+        }
+
+        const searchTerm = blockSearchInput.value.toLowerCase()
+        const blockNames = Object.keys(window.bot.registry.blocksByName)
+            .filter(name => name.includes(searchTerm))
+            .sort()
+
+        if (blockNames.length === 0) {
+            const emptyMsg = document.createElement('div')
+            emptyMsg.textContent = 'No blocks found.'
+            emptyMsg.style.color = '#777'
+            emptyMsg.style.textAlign = 'center'
+            emptyMsg.style.padding = '20px'
+            blockListContainer.appendChild(emptyMsg)
+            return
+        }
+
+        blockNames.forEach(blockName => {
+            const blockItem = document.createElement('div')
+            blockItem.style.padding = '8px 12px'
+            blockItem.style.backgroundColor = '#1a1a20'
+            blockItem.style.borderRadius = '4px'
+            blockItem.style.cursor = 'pointer'
+            blockItem.style.display = 'flex'
+            blockItem.style.alignItems = 'center'
+            blockItem.style.gap = '10px'
+            blockItem.style.transition = 'background-color 0.2s'
+
+            const checkbox = document.createElement('input')
+            checkbox.type = 'checkbox'
+            checkbox.checked = currentBlockModule && currentBlockModule.settings.blocks.includes(blockName)
+            checkbox.style.cursor = 'pointer'
+            checkbox.onclick = (e) => {
+                e.stopPropagation()
+                toggleBlock(blockName, checkbox.checked)
+            }
+
+            // Create container for texture and label
+            const contentContainer = document.createElement('div')
+            contentContainer.style.display = 'flex'
+            contentContainer.style.alignItems = 'center'
+            contentContainer.style.gap = '10px'
+            contentContainer.style.flex = '1'
+
+            // Try to get block texture
+            const textureCanvas = createBlockTextureCanvas(blockName)
+            if (textureCanvas) {
+                textureCanvas.style.width = '32px'
+                textureCanvas.style.height = '32px'
+                textureCanvas.style.imageRendering = 'pixelated'
+                contentContainer.appendChild(textureCanvas)
+            }
+
+            const label = document.createElement('span')
+            label.textContent = blockName
+            label.style.color = '#e0e0e0'
+            label.style.flex = '1'
+            contentContainer.appendChild(label)
+
+            blockItem.onclick = () => {
+                checkbox.checked = !checkbox.checked
+                toggleBlock(blockName, checkbox.checked)
+            }
+
+            blockItem.onmouseenter = () => {
+                blockItem.style.backgroundColor = '#252530'
+            }
+            blockItem.onmouseleave = () => {
+                blockItem.style.backgroundColor = '#1a1a20'
+            }
+
+            blockItem.appendChild(checkbox)
+            blockItem.appendChild(contentContainer)
+            blockListContainer.appendChild(blockItem)
+        })
+    }
+
+    const toggleBlock = (blockName, isChecked) => {
+        if (!currentBlockModule) return
+
+        if (isChecked) {
+            if (!currentBlockModule.settings.blocks.includes(blockName)) {
+                currentBlockModule.settings.blocks.push(blockName)
+            }
+        } else {
+            const index = currentBlockModule.settings.blocks.indexOf(blockName)
+            if (index > -1) {
+                currentBlockModule.settings.blocks.splice(index, 1)
+            }
+        }
+    }
+
+    blockSearchInput.oninput = () => {
+        renderBlockList()
+    }
+
     // State & Logic
     let activeTab = 'Movement' // Default
 
@@ -455,13 +691,19 @@ export const initUI = () => {
             settingsDiv.className = 'ac-module-settings'
 
             Object.keys(mod.settings).forEach(key => {
+                const val = mod.settings[key]
+
+                // Skip rendering blocks array directly - we'll add a button for it
+                if (key === 'blocks' && Array.isArray(val)) {
+                    return
+                }
+
                 const row = document.createElement('div')
                 row.className = 'ac-setting-row'
                 const label = document.createElement('span')
                 label.textContent = key
                 row.appendChild(label)
 
-                const val = mod.settings[key]
                 if (typeof val === 'number') {
                     const input = document.createElement('input')
                     input.type = 'number'
@@ -498,6 +740,30 @@ export const initUI = () => {
                 }
                 settingsDiv.appendChild(row)
             })
+
+            // Add "Config Blocks" button if module has blocks setting
+            if (mod.settings.blocks && Array.isArray(mod.settings.blocks)) {
+                const blocksRow = document.createElement('div')
+                blocksRow.className = 'ac-setting-row'
+                const blocksLabel = document.createElement('span')
+                blocksLabel.textContent = 'blocks'
+                blocksRow.appendChild(blocksLabel)
+
+                const configBtn = document.createElement('button')
+                configBtn.textContent = `Config Blocks (${mod.settings.blocks.length})`
+                configBtn.style.background = '#7c4dff'
+                configBtn.style.color = 'white'
+                configBtn.style.border = 'none'
+                configBtn.style.cursor = 'pointer'
+                configBtn.style.padding = '4px 12px'
+                configBtn.style.borderRadius = '4px'
+                configBtn.style.fontSize = '0.85em'
+                configBtn.onclick = () => {
+                    openBlockSelector(mod)
+                }
+                blocksRow.appendChild(configBtn)
+                settingsDiv.appendChild(blocksRow)
+            }
 
             // Special handling for Settings module: Add Update and Unload buttons, skip Bind
             if (mod.id === 'client_settings') {
@@ -850,6 +1116,7 @@ export const initUI = () => {
             previewScene = null
         }
         if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot)
+        if (blockSelectorModal && blockSelectorModal.parentNode) blockSelectorModal.parentNode.removeChild(blockSelectorModal)
         if (style && style.parentNode) style.parentNode.removeChild(style)
         if (previewInterval) clearInterval(previewInterval)
         window.removeEventListener('keydown', keydownHandler)
