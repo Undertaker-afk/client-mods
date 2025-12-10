@@ -128,6 +128,17 @@ export const loadPacketsModules = () => {
     let incomingQueue = []
     let burstTimer = null
     let incomingListeners = []
+    let burstStartTime = 0
+    let lastBurstTime = 0
+
+    // Expose queue info for UI
+    fakeLag.getQueueInfo = () => ({
+        outgoingCount: outgoingQueue.length,
+        incomingCount: incomingQueue.length,
+        totalCount: outgoingQueue.length + incomingQueue.length,
+        nextBurstIn: burstTimer ? Math.max(0, fakeLag.settings.burstInterval - (Date.now() - lastBurstTime)) : 0,
+        burstInterval: fakeLag.settings.burstInterval
+    })
 
     fakeLag.onToggle = (enabled) => {
         if (enabled && (!window.bot || !window.bot._client)) {
@@ -217,7 +228,10 @@ export const loadPacketsModules = () => {
 
             // Burst mode timer
             if (fakeLag.settings.burstMode) {
+                lastBurstTime = Date.now()
                 burstTimer = setInterval(() => {
+                    lastBurstTime = Date.now()
+
                     // Send all queued outgoing packets
                     while (outgoingQueue.length > 0) {
                         const { name, params, originalWrite } = outgoingQueue.shift()

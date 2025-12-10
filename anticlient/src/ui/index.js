@@ -1324,6 +1324,83 @@ export const initUI = () => {
             settingsGrid.appendChild(filterRow)
 
             fakeLagSection.appendChild(settingsGrid)
+
+            // Burst Mode Status Display
+            if (fakeLag.settings.burstMode && fakeLag.enabled) {
+                const burstStatus = document.createElement('div')
+                burstStatus.id = 'burst-status'
+                burstStatus.style.marginTop = '12px'
+                burstStatus.style.padding = '10px'
+                burstStatus.style.backgroundColor = '#0a0a0f'
+                burstStatus.style.borderRadius = '4px'
+                burstStatus.style.border = '1px solid #444'
+                burstStatus.style.display = 'grid'
+                burstStatus.style.gridTemplateColumns = '1fr 1fr'
+                burstStatus.style.gap = '8px'
+                burstStatus.style.fontSize = '13px'
+
+                const createStatusItem = (label, value, color = '#00ff00') => {
+                    const item = document.createElement('div')
+                    item.style.display = 'flex'
+                    item.style.flexDirection = 'column'
+                    item.style.gap = '2px'
+
+                    const labelEl = document.createElement('span')
+                    labelEl.textContent = label
+                    labelEl.style.color = '#888'
+                    labelEl.style.fontSize = '11px'
+                    item.appendChild(labelEl)
+
+                    const valueEl = document.createElement('span')
+                    valueEl.textContent = value
+                    valueEl.style.color = color
+                    valueEl.style.fontWeight = 'bold'
+                    valueEl.style.fontSize = '16px'
+                    valueEl.className = 'burst-value'
+                    item.appendChild(valueEl)
+
+                    return item
+                }
+
+                burstStatus.appendChild(createStatusItem('Next Burst In', '0ms', '#ffaa00'))
+                burstStatus.appendChild(createStatusItem('Queue Size', '0', '#00ffff'))
+                burstStatus.appendChild(createStatusItem('Outgoing Queue', '0', '#00ff00'))
+                burstStatus.appendChild(createStatusItem('Incoming Queue', '0', '#ff00ff'))
+
+                fakeLagSection.appendChild(burstStatus)
+
+                // Update burst status every 50ms
+                const updateBurstStatus = () => {
+                    if (!fakeLag.enabled || !fakeLag.settings.burstMode) {
+                        const existingStatus = document.getElementById('burst-status')
+                        if (existingStatus) existingStatus.remove()
+                        return
+                    }
+
+                    const queueInfo = fakeLag.getQueueInfo()
+                    const values = burstStatus.querySelectorAll('.burst-value')
+
+                    if (values[0]) values[0].textContent = `${Math.round(queueInfo.nextBurstIn)}ms`
+                    if (values[1]) values[1].textContent = queueInfo.totalCount
+                    if (values[2]) values[2].textContent = queueInfo.outgoingCount
+                    if (values[3]) values[3].textContent = queueInfo.incomingCount
+
+                    // Color coding for countdown
+                    if (values[0]) {
+                        const timeLeft = queueInfo.nextBurstIn
+                        const interval = queueInfo.burstInterval
+                        const percentage = timeLeft / interval
+
+                        if (percentage < 0.2) values[0].style.color = '#ff0000'
+                        else if (percentage < 0.5) values[0].style.color = '#ffaa00'
+                        else values[0].style.color = '#00ff00'
+                    }
+
+                    setTimeout(updateBurstStatus, 50)
+                }
+                updateBurstStatus()
+            }
+
             contentContainer.appendChild(fakeLagSection)
         }
 

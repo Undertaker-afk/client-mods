@@ -36,6 +36,120 @@ export const loadMovementModules = () => {
     }
     registerModule(flight)
 
+    // -- Freecam --
+    const freecam = new Module('freecam', 'Freecam', 'Movement', 'Detach camera from player and fly freely', {
+        speed: 1.0,
+        fastSpeed: 3.0,
+        slowSpeed: 0.3,
+        smoothing: 0.5
+    })
+
+    let freecamPosition = null
+    let freecamYaw = 0
+    let freecamPitch = 0
+    let freecamVelocity = { x: 0, y: 0, z: 0 }
+    let originalPosition = null
+
+    freecam.onToggle = (enabled) => {
+        if (!window.bot || !window.bot.entity) return
+
+        if (enabled) {
+            // Store original position
+            originalPosition = window.bot.entity.position.clone()
+            freecamPosition = window.bot.entity.position.clone()
+            freecamYaw = window.bot.entity.yaw
+            freecamPitch = window.bot.entity.pitch
+            freecamVelocity = { x: 0, y: 0, z: 0 }
+
+            console.log('[Freecam] Enabled - Camera detached from player')
+        } else {
+            // Reset camera to player position
+            freecamPosition = null
+            freecamVelocity = { x: 0, y: 0, z: 0 }
+            console.log('[Freecam] Disabled - Camera attached to player')
+        }
+    }
+
+    freecam.onTick = (bot) => {
+        if (!freecamPosition) return
+
+        // Get current speed based on control state
+        let currentSpeed = freecam.settings.speed
+        if (bot.controlState.sprint) currentSpeed = freecam.settings.fastSpeed
+        if (bot.controlState.sneak) currentSpeed = freecam.settings.slowSpeed
+
+        // Calculate movement direction based on camera rotation
+        const yaw = freecamYaw
+        const pitch = freecamPitch
+
+        // Reset velocity
+        let vx = 0, vy = 0, vz = 0
+
+        // Forward/Backward
+        if (bot.controlState.forward) {
+            vx -= Math.sin(yaw) * Math.cos(pitch) * currentSpeed
+            vy -= Math.sin(pitch) * currentSpeed
+            vz -= Math.cos(yaw) * Math.cos(pitch) * currentSpeed
+        }
+        if (bot.controlState.back) {
+            vx += Math.sin(yaw) * Math.cos(pitch) * currentSpeed
+            vy += Math.sin(pitch) * currentSpeed
+            vz += Math.cos(yaw) * Math.cos(pitch) * currentSpeed
+        }
+
+        // Left/Right strafe
+        if (bot.controlState.left) {
+            vx -= Math.cos(yaw) * currentSpeed
+            vz += Math.sin(yaw) * currentSpeed
+        }
+        if (bot.controlState.right) {
+            vx += Math.cos(yaw) * currentSpeed
+            vz -= Math.sin(yaw) * currentSpeed
+        }
+
+        // Up/Down (space/shift)
+        if (bot.controlState.jump) vy += currentSpeed
+        // Note: sneak is used for slow mode, so we use a different key for down
+        // We'll use the actual sneak key when not in slow mode
+        if (bot.controlState.sneak && !bot.controlState.sprint) {
+            vy -= currentSpeed * 0.5 // Slower descent
+        }
+
+        // Apply smoothing
+        const smoothing = freecam.settings.smoothing
+        freecamVelocity.x = freecamVelocity.x * smoothing + vx * (1 - smoothing)
+        freecamVelocity.y = freecamVelocity.y * smoothing + vy * (1 - smoothing)
+        freecamVelocity.z = freecamVelocity.z * smoothing + vz * (1 - smoothing)
+
+        // Update freecam position
+        freecamPosition.x += freecamVelocity.x
+        freecamPosition.y += freecamVelocity.y
+        freecamPosition.z += freecamVelocity.z
+
+        // Update camera rotation from bot entity (which gets updated by mouse movement)
+        freecamYaw = bot.entity.yaw
+        freecamPitch = bot.entity.pitch
+
+        // Update the camera position in the renderer
+        if (window.viewer && window.viewer.world) {
+            // Create a Vec3 for the camera position
+            const Vec3 = window.bot.entity.position.constructor
+            const cameraPos = new Vec3(freecamPosition.x, freecamPosition.y + 1.62, freecamPosition.z)
+
+            // Update camera directly
+            if (window.viewer.world.updateCamera) {
+                window.viewer.world.updateCamera(cameraPos, freecamYaw, freecamPitch)
+            }
+        }
+
+        // Keep player stationary (prevent server-side movement)
+        bot.entity.velocity.x = 0
+        bot.entity.velocity.y = 0
+        bot.entity.velocity.z = 0
+    }
+
+    registerModule(freecam)
+
     // -- Speed (Enhanced with Strafe) --
     const speed = new Module('speed', 'Speed', 'Movement', 'Moves faster on ground', {
         groundSpeedMultiplier: 1.5,

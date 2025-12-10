@@ -317,6 +317,83 @@ var loadMovementModules = () => {
     }
   };
   registerModule(flight);
+  const freecam = new Module("freecam", "Freecam", "Movement", "Detach camera from player and fly freely", {
+    speed: 1,
+    fastSpeed: 3,
+    slowSpeed: 0.3,
+    smoothing: 0.5
+  });
+  let freecamPosition = null;
+  let freecamYaw = 0;
+  let freecamPitch = 0;
+  let freecamVelocity = { x: 0, y: 0, z: 0 };
+  let originalPosition = null;
+  freecam.onToggle = (enabled) => {
+    if (!window.bot || !window.bot.entity) return;
+    if (enabled) {
+      originalPosition = window.bot.entity.position.clone();
+      freecamPosition = window.bot.entity.position.clone();
+      freecamYaw = window.bot.entity.yaw;
+      freecamPitch = window.bot.entity.pitch;
+      freecamVelocity = { x: 0, y: 0, z: 0 };
+      console.log("[Freecam] Enabled - Camera detached from player");
+    } else {
+      freecamPosition = null;
+      freecamVelocity = { x: 0, y: 0, z: 0 };
+      console.log("[Freecam] Disabled - Camera attached to player");
+    }
+  };
+  freecam.onTick = (bot) => {
+    if (!freecamPosition) return;
+    let currentSpeed = freecam.settings.speed;
+    if (bot.controlState.sprint) currentSpeed = freecam.settings.fastSpeed;
+    if (bot.controlState.sneak) currentSpeed = freecam.settings.slowSpeed;
+    const yaw = freecamYaw;
+    const pitch = freecamPitch;
+    let vx = 0, vy = 0, vz = 0;
+    if (bot.controlState.forward) {
+      vx -= Math.sin(yaw) * Math.cos(pitch) * currentSpeed;
+      vy -= Math.sin(pitch) * currentSpeed;
+      vz -= Math.cos(yaw) * Math.cos(pitch) * currentSpeed;
+    }
+    if (bot.controlState.back) {
+      vx += Math.sin(yaw) * Math.cos(pitch) * currentSpeed;
+      vy += Math.sin(pitch) * currentSpeed;
+      vz += Math.cos(yaw) * Math.cos(pitch) * currentSpeed;
+    }
+    if (bot.controlState.left) {
+      vx -= Math.cos(yaw) * currentSpeed;
+      vz += Math.sin(yaw) * currentSpeed;
+    }
+    if (bot.controlState.right) {
+      vx += Math.cos(yaw) * currentSpeed;
+      vz -= Math.sin(yaw) * currentSpeed;
+    }
+    if (bot.controlState.jump) vy += currentSpeed;
+    if (bot.controlState.sneak && !bot.controlState.sprint) {
+      vy -= currentSpeed * 0.5;
+    }
+    const smoothing = freecam.settings.smoothing;
+    freecamVelocity.x = freecamVelocity.x * smoothing + vx * (1 - smoothing);
+    freecamVelocity.y = freecamVelocity.y * smoothing + vy * (1 - smoothing);
+    freecamVelocity.z = freecamVelocity.z * smoothing + vz * (1 - smoothing);
+    freecamPosition.x += freecamVelocity.x;
+    freecamPosition.y += freecamVelocity.y;
+    freecamPosition.z += freecamVelocity.z;
+    freecamYaw = bot.entity.yaw;
+    freecamPitch = bot.entity.pitch;
+    if (window.viewer && window.viewer.world) {
+      const Vec3 = window.bot.entity.position.constructor;
+      const cameraPos = new Vec3(freecamPosition.x, freecamPosition.y + 1.62, freecamPosition.z);
+      if (window.viewer.world.updateCamera) {
+        window.viewer.world.updateCamera(cameraPos, freecamYaw, freecamPitch);
+      }
+    }
+    bot.entity.velocity.x = 0;
+    bot.entity.velocity.y = 0;
+    bot.entity.velocity.z = 0;
+  };
+  registerModule(freecam);
   const speed = new Module("speed", "Speed", "Movement", "Moves faster on ground", {
     groundSpeedMultiplier: 1.5,
     airSpeedMultiplier: 1.2,
@@ -1490,6 +1567,15 @@ var loadPacketsModules = () => {
   let incomingQueue = [];
   let burstTimer = null;
   let incomingListeners = [];
+  let burstStartTime = 0;
+  let lastBurstTime = 0;
+  fakeLag.getQueueInfo = () => ({
+    outgoingCount: outgoingQueue.length,
+    incomingCount: incomingQueue.length,
+    totalCount: outgoingQueue.length + incomingQueue.length,
+    nextBurstIn: burstTimer ? Math.max(0, fakeLag.settings.burstInterval - (Date.now() - lastBurstTime)) : 0,
+    burstInterval: fakeLag.settings.burstInterval
+  });
   fakeLag.onToggle = (enabled) => {
     if (enabled && (!window.bot || !window.bot._client)) {
       const checkBot = setInterval(() => {
@@ -1576,7 +1662,9 @@ var loadPacketsModules = () => {
         });
       }
       if (fakeLag.settings.burstMode) {
+        lastBurstTime = Date.now();
         burstTimer = setInterval(() => {
+          lastBurstTime = Date.now();
           while (outgoingQueue.length > 0) {
             const { name, params, originalWrite: originalWrite2 } = outgoingQueue.shift();
             if (fakeLag.enabled) {
@@ -2759,6 +2847,66 @@ var initUI = () => {
       filterRow.style.gridColumn = "1 / -1";
       settingsGrid.appendChild(filterRow);
       fakeLagSection.appendChild(settingsGrid);
+      if (fakeLag.settings.burstMode && fakeLag.enabled) {
+        const burstStatus = document.createElement("div");
+        burstStatus.id = "burst-status";
+        burstStatus.style.marginTop = "12px";
+        burstStatus.style.padding = "10px";
+        burstStatus.style.backgroundColor = "#0a0a0f";
+        burstStatus.style.borderRadius = "4px";
+        burstStatus.style.border = "1px solid #444";
+        burstStatus.style.display = "grid";
+        burstStatus.style.gridTemplateColumns = "1fr 1fr";
+        burstStatus.style.gap = "8px";
+        burstStatus.style.fontSize = "13px";
+        const createStatusItem = (label, value, color = "#00ff00") => {
+          const item = document.createElement("div");
+          item.style.display = "flex";
+          item.style.flexDirection = "column";
+          item.style.gap = "2px";
+          const labelEl = document.createElement("span");
+          labelEl.textContent = label;
+          labelEl.style.color = "#888";
+          labelEl.style.fontSize = "11px";
+          item.appendChild(labelEl);
+          const valueEl = document.createElement("span");
+          valueEl.textContent = value;
+          valueEl.style.color = color;
+          valueEl.style.fontWeight = "bold";
+          valueEl.style.fontSize = "16px";
+          valueEl.className = "burst-value";
+          item.appendChild(valueEl);
+          return item;
+        };
+        burstStatus.appendChild(createStatusItem("Next Burst In", "0ms", "#ffaa00"));
+        burstStatus.appendChild(createStatusItem("Queue Size", "0", "#00ffff"));
+        burstStatus.appendChild(createStatusItem("Outgoing Queue", "0", "#00ff00"));
+        burstStatus.appendChild(createStatusItem("Incoming Queue", "0", "#ff00ff"));
+        fakeLagSection.appendChild(burstStatus);
+        const updateBurstStatus = () => {
+          if (!fakeLag.enabled || !fakeLag.settings.burstMode) {
+            const existingStatus = document.getElementById("burst-status");
+            if (existingStatus) existingStatus.remove();
+            return;
+          }
+          const queueInfo = fakeLag.getQueueInfo();
+          const values = burstStatus.querySelectorAll(".burst-value");
+          if (values[0]) values[0].textContent = `${Math.round(queueInfo.nextBurstIn)}ms`;
+          if (values[1]) values[1].textContent = queueInfo.totalCount;
+          if (values[2]) values[2].textContent = queueInfo.outgoingCount;
+          if (values[3]) values[3].textContent = queueInfo.incomingCount;
+          if (values[0]) {
+            const timeLeft = queueInfo.nextBurstIn;
+            const interval = queueInfo.burstInterval;
+            const percentage = timeLeft / interval;
+            if (percentage < 0.2) values[0].style.color = "#ff0000";
+            else if (percentage < 0.5) values[0].style.color = "#ffaa00";
+            else values[0].style.color = "#00ff00";
+          }
+          setTimeout(updateBurstStatus, 50);
+        };
+        updateBurstStatus();
+      }
       contentContainer.appendChild(fakeLagSection);
     }
     const packetViewer = modules["packetviewer"];
