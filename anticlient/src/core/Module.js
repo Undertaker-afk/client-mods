@@ -31,7 +31,8 @@ export const categories = {
     'Render': [],
     'Player': [],
     'World': [],
-    'Client': []
+    'Client': [],
+    'Packets': []
 }
 
 export const modules = {}

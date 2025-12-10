@@ -362,6 +362,13 @@ export const initUI = () => {
 
     const renderModules = () => {
         contentContainer.innerHTML = ''
+        
+        // Special handling for Packets tab
+        if (activeTab === 'Packets') {
+            renderPackets()
+            return
+        }
+        
         const catMods = categories[activeTab] || []
 
         if (!catMods.length) {
@@ -535,6 +542,181 @@ export const initUI = () => {
             modEl.appendChild(settingsDiv)
             contentContainer.appendChild(modEl)
         })
+    }
+
+    const renderPackets = () => {
+        const packetViewer = modules['packetviewer']
+        if (!packetViewer) {
+            const emptyMsg = document.createElement('div')
+            emptyMsg.textContent = 'Packet Viewer module not found.'
+            emptyMsg.style.color = '#555'
+            emptyMsg.style.textAlign = 'center'
+            emptyMsg.style.marginTop = '20px'
+            contentContainer.appendChild(emptyMsg)
+            return
+        }
+
+        // Packet Viewer Controls
+        const controlsDiv = document.createElement('div')
+        controlsDiv.style.marginBottom = '10px'
+        controlsDiv.style.padding = '10px'
+        controlsDiv.style.backgroundColor = '#1a1a20'
+        controlsDiv.style.borderRadius = '4px'
+        controlsDiv.style.display = 'flex'
+        controlsDiv.style.gap = '10px'
+        controlsDiv.style.alignItems = 'center'
+        controlsDiv.style.flexWrap = 'wrap'
+
+        // Enable/Disable toggle
+        const toggleBtn = document.createElement('button')
+        toggleBtn.textContent = packetViewer.enabled ? 'Disable' : 'Enable'
+        toggleBtn.style.padding = '4px 12px'
+        toggleBtn.style.background = packetViewer.enabled ? '#d32f2f' : '#2e7d32'
+        toggleBtn.style.color = 'white'
+        toggleBtn.style.border = 'none'
+        toggleBtn.style.cursor = 'pointer'
+        toggleBtn.style.borderRadius = '2px'
+        toggleBtn.onclick = () => {
+            packetViewer.toggle()
+            toggleBtn.textContent = packetViewer.enabled ? 'Disable' : 'Enable'
+            toggleBtn.style.background = packetViewer.enabled ? '#d32f2f' : '#2e7d32'
+        }
+        controlsDiv.appendChild(toggleBtn)
+
+        // Filter input
+        const filterLabel = document.createElement('span')
+        filterLabel.textContent = 'Filter:'
+        filterLabel.style.color = '#e0e0e0'
+        controlsDiv.appendChild(filterLabel)
+
+        const filterInput = document.createElement('input')
+        filterInput.type = 'text'
+        filterInput.placeholder = 'Packet name...'
+        filterInput.value = packetViewer.settings.filter || ''
+        filterInput.style.background = '#000'
+        filterInput.style.color = 'white'
+        filterInput.style.border = '1px solid #444'
+        filterInput.style.padding = '4px 8px'
+        filterInput.style.borderRadius = '2px'
+        filterInput.style.width = '150px'
+        filterInput.oninput = (e) => {
+            packetViewer.settings.filter = e.target.value
+        }
+        controlsDiv.appendChild(filterInput)
+
+        // Direction selector
+        const directionLabel = document.createElement('span')
+        directionLabel.textContent = 'Direction:'
+        directionLabel.style.color = '#e0e0e0'
+        controlsDiv.appendChild(directionLabel)
+
+        const directionSelect = document.createElement('select')
+        directionSelect.style.background = '#000'
+        directionSelect.style.color = 'white'
+        directionSelect.style.border = '1px solid #444'
+        directionSelect.style.padding = '4px 8px'
+        directionSelect.style.borderRadius = '2px'
+        directionSelect.innerHTML = '<option value="both">Both</option><option value="incoming">Incoming</option><option value="outgoing">Outgoing</option>'
+        directionSelect.value = packetViewer.settings.direction || 'both'
+        directionSelect.onchange = (e) => {
+            packetViewer.settings.direction = e.target.value
+        }
+        controlsDiv.appendChild(directionSelect)
+
+        // Clear button
+        const clearBtn = document.createElement('button')
+        clearBtn.textContent = 'Clear'
+        clearBtn.style.padding = '4px 12px'
+        clearBtn.style.background = '#333'
+        clearBtn.style.color = 'white'
+        clearBtn.style.border = '1px solid #444'
+        clearBtn.style.cursor = 'pointer'
+        clearBtn.style.borderRadius = '2px'
+        clearBtn.onclick = () => {
+            packetViewer.packets = []
+            renderPackets()
+        }
+        controlsDiv.appendChild(clearBtn)
+
+        contentContainer.appendChild(controlsDiv)
+
+        // Packet list
+        const packetList = document.createElement('div')
+        packetList.style.maxHeight = '400px'
+        packetList.style.overflowY = 'auto'
+        packetList.style.display = 'flex'
+        packetList.style.flexDirection = 'column'
+        packetList.style.gap = '5px'
+
+        if (!packetViewer.packets || packetViewer.packets.length === 0) {
+            const emptyMsg = document.createElement('div')
+            emptyMsg.textContent = 'No packets captured. Enable packet viewer to start capturing.'
+            emptyMsg.style.color = '#555'
+            emptyMsg.style.textAlign = 'center'
+            emptyMsg.style.marginTop = '20px'
+            packetList.appendChild(emptyMsg)
+        } else {
+            packetViewer.packets.forEach(packet => {
+                const packetEl = document.createElement('div')
+                packetEl.style.backgroundColor = '#1a1a20'
+                packetEl.style.padding = '8px'
+                packetEl.style.borderRadius = '4px'
+                packetEl.style.borderLeft = `3px solid ${packet.direction === 'incoming' ? '#4caf50' : '#2196f3'}`
+                packetEl.style.fontSize = '0.85em'
+                packetEl.style.cursor = 'pointer'
+
+                const header = document.createElement('div')
+                header.style.display = 'flex'
+                header.style.justifyContent = 'space-between'
+                header.style.marginBottom = '5px'
+                header.style.color = packet.direction === 'incoming' ? '#4caf50' : '#2196f3'
+                header.style.fontWeight = 'bold'
+
+                const nameSpan = document.createElement('span')
+                nameSpan.textContent = packet.name
+                header.appendChild(nameSpan)
+
+                const timeSpan = document.createElement('span')
+                timeSpan.textContent = new Date(packet.timestamp).toLocaleTimeString()
+                timeSpan.style.color = '#777'
+                timeSpan.style.fontSize = '0.9em'
+                header.appendChild(timeSpan)
+
+                packetEl.appendChild(header)
+
+                const dataPre = document.createElement('pre')
+                dataPre.style.margin = '0'
+                dataPre.style.color = '#ccc'
+                dataPre.style.fontSize = '0.8em'
+                dataPre.style.maxHeight = '100px'
+                dataPre.style.overflow = 'auto'
+                dataPre.style.whiteSpace = 'pre-wrap'
+                dataPre.style.wordBreak = 'break-all'
+                dataPre.textContent = packet.data.length > 500 ? packet.data.substring(0, 500) + '...' : packet.data
+                packetEl.appendChild(dataPre)
+
+                let expanded = false
+                packetEl.onclick = () => {
+                    expanded = !expanded
+                    if (expanded) {
+                        dataPre.textContent = packet.data
+                        dataPre.style.maxHeight = '300px'
+                    } else {
+                        dataPre.textContent = packet.data.length > 500 ? packet.data.substring(0, 500) + '...' : packet.data
+                        dataPre.style.maxHeight = '100px'
+                    }
+                }
+
+                packetList.appendChild(packetEl)
+            })
+        }
+
+        contentContainer.appendChild(packetList)
+
+        // Store update function
+        if (!window.anticlient) window.anticlient = {}
+        if (!window.anticlient.ui) window.anticlient.ui = {}
+        window.anticlient.ui.updatePacketViewer = renderPackets
     }
 
     const renderTabs = () => {

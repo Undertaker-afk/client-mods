@@ -5,6 +5,7 @@ import { loadRenderModules } from './src/modules/render.js'
 import { loadPlayerModules } from './src/modules/player.js'
 import { loadWorldModules } from './src/modules/world.js'
 import { loadClientModules } from './src/modules/client.js'
+import { loadPacketsModules } from './src/modules/packets.js'
 import { modules } from './src/core/Module.js'
 import { initUI } from './src/ui/index.js'
 
@@ -25,6 +26,7 @@ export default (mod) => {
     loadPlayerModules()
     loadWorldModules()
     loadClientModules()
+    loadPacketsModules()
 
     // 2. Initialize UI
     const cleanupUI = initUI()

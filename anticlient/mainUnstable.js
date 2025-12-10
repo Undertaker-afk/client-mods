@@ -31,7 +31,8 @@ var categories = {
   "Render": [],
   "Player": [],
   "World": [],
-  "Client": []
+  "Client": [],
+  "Packets": []
 };
 var modules = {};
 var registerModule = (module) => {
@@ -42,33 +43,187 @@ var registerModule = (module) => {
 
 // anticlient/src/modules/combat.js
 var loadCombatModules = () => {
+  let criticalsModule = null;
   const killaura = new Module("killaura", "Kill Aura", "Combat", "Automatically attacks entities around you", { range: 4.5, speed: 10 });
   killaura.onTick = (bot) => {
     if (!killaura.lastAttack) killaura.lastAttack = 0;
     const now = Date.now();
     if (now - killaura.lastAttack < 1e3 / killaura.settings.speed) return;
-    const target = bot.nearestEntity((e) => (e.type === "player" || e.type === "mob") && e.position.distanceTo(bot.entity.position) < killaura.settings.range && e !== bot.entity);
+    const reachModule = modules["reach"];
+    const attackRange = reachModule && reachModule.enabled ? reachModule.settings.reach : killaura.settings.range;
+    const target = bot.nearestEntity((e) => (e.type === "player" || e.type === "mob") && e.position.distanceTo(bot.entity.position) < attackRange && e !== bot.entity);
     if (target) {
+      if (criticalsModule && criticalsModule.enabled) {
+        if (bot.entity.onGround) {
+          bot.entity.velocity.y = 0.42 * (criticalsModule.settings.jumpHeight || 1);
+        }
+      }
       bot.lookAt(target.position.offset(0, target.height * 0.85, 0));
       bot.attack(target);
       killaura.lastAttack = now;
     }
   };
   registerModule(killaura);
-  const criticals = new Module("criticals", "Criticals", "Combat", "Deal critical hits", {});
+  const aimbot = new Module("aimbot", "Aimbot", "Combat", "Smooth aim towards nearest entity", {
+    range: 6,
+    smoothness: 0.3,
+    // 0 = instant, 1 = very smooth
+    target: "both"
+    // 'players' | 'mobs' | 'both'
+  });
+  let currentYaw = 0;
+  let currentPitch = 0;
+  aimbot.onTick = (bot) => {
+    if (!aimbot.enabled) return;
+    const filter = aimbot.settings.target === "players" ? ((e) => e.type === "player") : aimbot.settings.target === "mobs" ? ((e) => e.type === "mob") : ((e) => e.type === "player" || e.type === "mob");
+    const target = bot.nearestEntity(
+      (e) => filter(e) && e.position.distanceTo(bot.entity.position) < aimbot.settings.range && e !== bot.entity
+    );
+    if (target) {
+      const eyePos = bot.entity.position.offset(0, bot.entity.eyeHeight, 0);
+      const delta = target.position.offset(0, target.height * 0.85, 0).minus(eyePos);
+      const targetYaw = Math.atan2(-delta.x, -delta.z);
+      const groundDistance = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
+      const targetPitch = Math.atan2(delta.y, groundDistance);
+      const smooth = aimbot.settings.smoothness;
+      currentYaw = bot.entity.yaw + (targetYaw - bot.entity.yaw) * (1 - smooth);
+      currentPitch = bot.entity.pitch + (targetPitch - bot.entity.pitch) * (1 - smooth);
+      bot.look(currentYaw, currentPitch, false);
+    }
+  };
+  registerModule(aimbot);
+  const reach = new Module("reach", "Reach", "Combat", "Extend attack range", { reach: 3.5 });
+  reach.onTick = (bot) => {
+  };
+  registerModule(reach);
+  const criticals = new Module("criticals", "Criticals", "Combat", "Deal critical hits", {
+    jumpHeight: 1
+  });
+  criticalsModule = criticals;
   criticals.onTick = (bot) => {
   };
   registerModule(criticals);
-  const velocity = new Module("velocity", "AntiKnockback", "Combat", "No knockback", {});
+  const velocity = new Module("velocity", "AntiKnockback", "Combat", "Cancel knockback", {
+    horizontal: true,
+    vertical: false,
+    strength: 0
+    // 0 = full cancel, 1 = no cancel
+  });
   velocity.onTick = (bot) => {
-    if (bot.entity.velocity.x !== 0 || bot.entity.velocity.z !== 0) {
+    if (velocity.settings.horizontal && velocity.settings.strength < 1) {
+      const reduction = 1 - velocity.settings.strength;
+      bot.entity.velocity.x *= reduction;
+      bot.entity.velocity.z *= reduction;
+    }
+    if (velocity.settings.vertical && velocity.settings.strength < 1) {
+      const reduction = 1 - velocity.settings.strength;
+      bot.entity.velocity.y *= reduction;
     }
   };
-  const autoArmor = new Module("autoarmor", "Auto Armor", "Combat", "Equip best armor", {});
+  registerModule(velocity);
+  const autoTotem = new Module("autototem", "Auto Totem", "Combat", "Auto-equip totem in offhand", {
+    healthThreshold: 16,
+    // Half hearts
+    checkInterval: 5
+    // Ticks
+  });
+  let totemTick = 0;
+  autoTotem.onTick = (bot) => {
+    totemTick++;
+    if (totemTick % autoTotem.settings.checkInterval !== 0) return;
+    const needsTotem = bot.health <= autoTotem.settings.healthThreshold;
+    const offhandItem = bot.inventory.slots[45];
+    if (needsTotem && (!offhandItem || offhandItem.name !== "totem_of_undying")) {
+      const totem = bot.inventory.items().find((item) => item.name === "totem_of_undying");
+      if (totem) {
+        bot.equip(totem, "off-hand").catch(() => {
+        });
+      }
+    }
+  };
+  registerModule(autoTotem);
+  const autoSoup = new Module("autosoup", "Auto Soup", "Combat", "Auto-consume soup/potions", {
+    healthThreshold: 16,
+    itemType: "soup"
+    // 'soup' | 'potion' | 'both'
+  });
+  autoSoup.onTick = (bot) => {
+    if (bot.health <= autoSoup.settings.healthThreshold && !autoSoup.eating) {
+      let item = null;
+      if (autoSoup.settings.itemType === "soup" || autoSoup.settings.itemType === "both") {
+        item = bot.inventory.items().find((i) => i.name.includes("soup") || i.name.includes("stew"));
+      }
+      if (!item && (autoSoup.settings.itemType === "potion" || autoSoup.settings.itemType === "both")) {
+        item = bot.inventory.items().find((i) => i.name.includes("potion") && (i.name.includes("healing") || i.name.includes("regeneration")));
+      }
+      if (item) {
+        autoSoup.eating = true;
+        bot.equip(item, "hand").then(() => bot.consume()).then(() => {
+          autoSoup.eating = false;
+        }).catch(() => {
+          autoSoup.eating = false;
+        });
+      }
+    }
+  };
+  registerModule(autoSoup);
+  const autoArmor = new Module("autoarmor", "Auto Armor", "Combat", "Equip best armor", {
+    checkInterval: 20
+    // Ticks
+  });
   let aaTick = 0;
-  autoArmor.onTick = (bot) => {
+  let equippingArmor = false;
+  const armorSlots = {
+    head: 5,
+    torso: 6,
+    legs: 7,
+    feet: 8
+  };
+  const getArmorValue = (itemName) => {
+    if (!itemName || itemName === "air") return 0;
+    if (itemName.includes("diamond")) return 100;
+    if (itemName.includes("netherite")) return 110;
+    if (itemName.includes("iron")) return 80;
+    if (itemName.includes("gold")) return 60;
+    if (itemName.includes("chain")) return 50;
+    if (itemName.includes("leather")) return 40;
+    if (itemName.includes("helmet") || itemName.includes("cap")) return 20;
+    if (itemName.includes("chestplate") || itemName.includes("tunic")) return 20;
+    if (itemName.includes("leggings") || itemName.includes("pants")) return 20;
+    if (itemName.includes("boots")) return 20;
+    return 0;
+  };
+  autoArmor.onTick = async (bot) => {
     aaTick++;
-    if (aaTick % 20 === 0) {
+    if (aaTick % autoArmor.settings.checkInterval !== 0 || equippingArmor) return;
+    equippingArmor = true;
+    try {
+      for (const [slotName, slotId] of Object.entries(armorSlots)) {
+        const currentArmor = bot.inventory.slots[slotId];
+        const currentValue = getArmorValue(currentArmor?.name);
+        const betterArmor = bot.inventory.items().find((item) => {
+          if (item.slot === slotId) return false;
+          if (item.slot < 9 || item.slot >= 36) return false;
+          const itemValue = getArmorValue(item.name);
+          if (itemValue <= currentValue) return false;
+          if (slotName === "head" && !item.name.includes("helmet") && !item.name.includes("cap")) return false;
+          if (slotName === "torso" && !item.name.includes("chestplate") && !item.name.includes("tunic")) return false;
+          if (slotName === "legs" && !item.name.includes("leggings") && !item.name.includes("pants")) return false;
+          if (slotName === "feet" && !item.name.includes("boots")) return false;
+          return true;
+        });
+        if (betterArmor) {
+          try {
+            await bot.equip(betterArmor, slotName);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          } catch (e) {
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Auto-armor error:", e);
+    } finally {
+      equippingArmor = false;
     }
   };
   registerModule(autoArmor);
@@ -105,11 +260,55 @@ var loadMovementModules = () => {
     }
   };
   registerModule(flight);
-  const speed = new Module("speed", "Speed", "Movement", "Moves faster on ground", { multiplier: 1.5 });
+  const speed = new Module("speed", "Speed", "Movement", "Moves faster on ground", {
+    groundSpeedMultiplier: 1.5,
+    airSpeedMultiplier: 1.2,
+    mode: "strafe"
+    // 'strafe' | 'forward'
+  });
   speed.onTick = (bot) => {
-    if (bot.entity.onGround && (bot.controlState.forward || bot.controlState.left || bot.controlState.right || bot.controlState.back)) {
-      bot.entity.velocity.x *= speed.settings.multiplier;
-      bot.entity.velocity.z *= speed.settings.multiplier;
+    const controlStates = [
+      bot.controlState.forward,
+      bot.controlState.right,
+      bot.controlState.back,
+      bot.controlState.left
+    ];
+    if (!controlStates.some((state) => state === true)) return;
+    if (speed.settings.mode === "strafe") {
+      let yaw = bot.entity.yaw;
+      const vel = bot.entity.velocity;
+      if (!(controlStates[0] || controlStates[2])) {
+        if (controlStates[1]) yaw += Math.PI / 2;
+        else if (controlStates[3]) yaw -= Math.PI / 2;
+      } else if (controlStates[0]) {
+        yaw += Math.PI / 2;
+        if (controlStates[1]) yaw += Math.PI / 4;
+        else if (controlStates[3]) yaw -= Math.PI / 4;
+      } else if (controlStates[2]) {
+        yaw -= Math.PI / 2;
+        if (controlStates[1]) yaw -= Math.PI / 4;
+        else if (controlStates[3]) yaw += Math.PI / 4;
+      }
+      const newX = Math.sin(yaw + Math.PI / 2);
+      const newZ = Math.cos(yaw + Math.PI / 2);
+      if (bot.entity.onGround) {
+        bot.entity.velocity = bot.entity.velocity.set(
+          speed.settings.groundSpeedMultiplier * newX,
+          vel.y,
+          speed.settings.groundSpeedMultiplier * newZ
+        );
+      } else {
+        bot.entity.velocity = bot.entity.velocity.set(
+          speed.settings.airSpeedMultiplier * newX,
+          vel.y,
+          speed.settings.airSpeedMultiplier * newZ
+        );
+      }
+    } else {
+      if (bot.entity.onGround && (bot.controlState.forward || bot.controlState.left || bot.controlState.right || bot.controlState.back)) {
+        bot.entity.velocity.x *= speed.settings.groundSpeedMultiplier;
+        bot.entity.velocity.z *= speed.settings.groundSpeedMultiplier;
+      }
     }
   };
   registerModule(speed);
@@ -169,10 +368,132 @@ var loadMovementModules = () => {
     }
   };
   registerModule(scaffold);
-  const noSlow = new Module("noslow", "No Slow", "Movement", "No slowdown when eating", {});
+  const noSlow = new Module("noslow", "No Slow", "Movement", "No slowdown when eating", { enabled: true });
+  let lastVelocity = null;
   noSlow.onTick = (bot) => {
+    if (bot.usingHeldItem && noSlow.settings.enabled) {
+      if (!lastVelocity) {
+        lastVelocity = { x: bot.entity.velocity.x, z: bot.entity.velocity.z };
+      }
+      if (lastVelocity) {
+        bot.entity.velocity.x = lastVelocity.x;
+        bot.entity.velocity.z = lastVelocity.z;
+      }
+    } else {
+      lastVelocity = null;
+    }
   };
   registerModule(noSlow);
+  const slowFall = new Module("slowfall", "Slow Fall", "Movement", "Limit fall velocity", { maxFallSpeed: -0.2 });
+  slowFall.onTick = (bot) => {
+    if (bot.entity.velocity.y < slowFall.settings.maxFallSpeed) {
+      bot.entity.velocity.y = slowFall.settings.maxFallSpeed;
+    }
+  };
+  registerModule(slowFall);
+  const blink = new Module("blink", "Blink", "Movement", "Teleport back to previous position", {
+    distance: 5,
+    cooldown: 1e3
+  });
+  let lastPosition = null;
+  let lastBlinkTime = 0;
+  blink.onToggle = (enabled) => {
+    if (enabled && window.bot) {
+      lastPosition = window.bot.entity.position.clone();
+    }
+  };
+  blink.onTick = (bot) => {
+    if (blink.enabled) {
+      const now = Date.now();
+      if (now - lastBlinkTime > 100) {
+        lastPosition = bot.entity.position.clone();
+        lastBlinkTime = now;
+      }
+    }
+  };
+  window.addEventListener("keydown", (e) => {
+    if (e.code === blink.bind && blink.enabled && window.bot && lastPosition) {
+      const now = Date.now();
+      if (now - lastBlinkTime > blink.settings.cooldown) {
+        window.bot.entity.position.set(lastPosition.x, lastPosition.y, lastPosition.z);
+        lastBlinkTime = now;
+      }
+    }
+  });
+  registerModule(blink);
+  const antiKnockback = new Module("antiknockback", "Anti-Knockback", "Movement", "Cancel knockback", {
+    updateMineflayer: true,
+    strength: 1
+    // 0 = full cancel, 1 = no cancel
+  });
+  let lastVelocityBeforeHit = null;
+  antiKnockback.onTick = (bot) => {
+    if (antiKnockback.settings.strength < 1) {
+      const currentVel = Math.sqrt(bot.entity.velocity.x ** 2 + bot.entity.velocity.z ** 2);
+      if (currentVel < 0.1) {
+        lastVelocityBeforeHit = { x: bot.entity.velocity.x, z: bot.entity.velocity.z };
+      }
+      if (lastVelocityBeforeHit && currentVel > 0.3) {
+        const reduction = 1 - antiKnockback.settings.strength;
+        bot.entity.velocity.x *= reduction;
+        bot.entity.velocity.z *= reduction;
+      }
+    }
+  };
+  registerModule(antiKnockback);
+  const elytraFly = new Module("elytrafly", "Elytra Fly", "Movement", "Auto-activate and control elytra", {
+    autoActivate: true,
+    speed: 1
+  });
+  elytraFly.onTick = (bot) => {
+    if (elytraFly.settings.autoActivate && bot.entity.velocity.y < -0.5) {
+      const chestplate = bot.inventory.slots[6];
+      if (chestplate && chestplate.name === "elytra") {
+        if (bot.elytraFly) {
+          bot.elytraFly();
+        }
+      }
+    }
+    if (bot.entity.elytraFlying) {
+      const yaw = bot.entity.yaw;
+      const speed2 = elytraFly.settings.speed;
+      if (bot.controlState.forward) {
+        bot.entity.velocity.x = -Math.sin(yaw) * speed2;
+        bot.entity.velocity.z = -Math.cos(yaw) * speed2;
+      } else if (bot.controlState.back) {
+        bot.entity.velocity.x = Math.sin(yaw) * speed2;
+        bot.entity.velocity.z = Math.cos(yaw) * speed2;
+      }
+      if (bot.controlState.jump) {
+        bot.entity.velocity.y = speed2 * 0.5;
+      } else if (bot.controlState.sneak) {
+        bot.entity.velocity.y = -speed2 * 0.5;
+      }
+    }
+  };
+  registerModule(elytraFly);
+  scaffold.settings.range = 5;
+  scaffold.settings.sneakOnly = false;
+  scaffold.onTick = (bot) => {
+    if (scaffold.settings.sneakOnly && !bot.controlState.sneak) return;
+    const pos = bot.entity.position;
+    const blockBelow = bot.blockAt(pos.offset(0, -1, 0));
+    if (blockBelow && blockBelow.boundingBox === "empty") {
+      const item = bot.inventory.items().find(
+        (i) => i.name !== "air" && !i.name.includes("sword") && !i.name.includes("pickaxe") && !i.name.includes("axe") && !i.name.includes("shovel")
+      );
+      if (item) {
+        bot.equip(item, "hand").then(() => {
+          const referenceBlock = bot.blockAt(pos.offset(0, -2, 0));
+          if (referenceBlock && referenceBlock.boundingBox !== "empty") {
+            bot.placeBlock(referenceBlock, { x: 0, y: 1, z: 0 }).catch(() => {
+            });
+          }
+        }).catch(() => {
+        });
+      }
+    }
+  };
 };
 
 // anticlient/src/modules/render.js
@@ -182,7 +503,9 @@ var loadRenderModules = () => {
   const esp = new Module("esp", "ESP", "Render", "See entities through walls", {
     playerColor: "#00ffff",
     mobColor: "#ff0000",
-    wireframe: true
+    wireframe: true,
+    showDistance: true,
+    distanceColor: "#ffffff"
   });
   esp.onToggle = (enabled) => {
     if (!window.anticlient) window.anticlient = { visuals: {} };
@@ -198,13 +521,77 @@ var loadRenderModules = () => {
     }
   });
   registerModule(esp);
-  const tracers = new Module("tracers", "Tracers", "Render", "Draw lines to entities", { color: "#ffffff" });
+  const tracers = new Module("tracers", "Tracers", "Render", "Draw lines to entities", {
+    color: "#ffffff",
+    showDistance: true,
+    maxDistance: 64
+  });
   tracers.onToggle = (enabled) => {
     if (!window.anticlient) window.anticlient = { visuals: {} };
     if (!window.anticlient.visuals) window.anticlient.visuals = {};
     window.anticlient.visuals.tracers = enabled;
+    window.anticlient.visuals.tracersSettings = tracers.settings;
   };
+  tracers.settings = new Proxy(tracers.settings, {
+    set: (target, prop, value) => {
+      target[prop] = value;
+      if (window.anticlient?.visuals) window.anticlient.visuals.tracersSettings = target;
+      return true;
+    }
+  });
   registerModule(tracers);
+  const nameTags = new Module("nametags", "NameTags", "Render", "Show entity names above heads", {
+    range: 64,
+    showHealth: true,
+    showDistance: true
+  });
+  nameTags.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.nameTags = enabled;
+    window.anticlient.visuals.nameTagsSettings = nameTags.settings;
+  };
+  nameTags.settings = new Proxy(nameTags.settings, {
+    set: (target, prop, value) => {
+      target[prop] = value;
+      if (window.anticlient?.visuals) window.anticlient.visuals.nameTagsSettings = target;
+      return true;
+    }
+  });
+  registerModule(nameTags);
+  const blockEsp = new Module("blockesp", "Block ESP", "Render", "Highlight blocks through walls", {
+    blocks: ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore", "ancient_debris"],
+    color: "#00ff00",
+    range: 32
+  });
+  blockEsp.lastScan = 0;
+  blockEsp.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.blockEsp = enabled;
+    window.anticlient.visuals.blockEspSettings = blockEsp.settings;
+  };
+  blockEsp.onTick = (bot) => {
+    if (Date.now() - blockEsp.lastScan > 1e3) {
+      const blocks = bot.findBlocks({
+        matching: (block) => blockEsp.settings.blocks.some((name) => block.name.includes(name)),
+        maxDistance: blockEsp.settings.range,
+        count: 200
+      });
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.blockEspLocations = blocks;
+      }
+      blockEsp.lastScan = Date.now();
+    }
+  };
+  blockEsp.settings = new Proxy(blockEsp.settings, {
+    set: (target, prop, value) => {
+      target[prop] = value;
+      if (window.anticlient?.visuals) window.anticlient.visuals.blockEspSettings = target;
+      return true;
+    }
+  });
+  registerModule(blockEsp);
   const storageEsp = new Module("storageesp", "Storage ESP", "Render", "See chests and containers", { color: "#FFA500" });
   storageEsp.lastScan = 0;
   storageEsp.onToggle = (enabled) => {
@@ -230,31 +617,209 @@ var loadRenderModules = () => {
 
 // anticlient/src/modules/player.js
 var loadPlayerModules = () => {
-  const autoEat = new Module("autoeat", "Auto Eat", "Player", "Automatically eats food when hungry", {});
+  const autoEat = new Module("autoeat", "Auto Eat", "Player", "Automatically eats food when hungry", {
+    healthThreshold: 16,
+    saturationThreshold: 10,
+    preferGoldenApple: true
+  });
   autoEat.onTick = (bot) => {
-    if (bot.food < 16 && !autoEat.eating) {
-      const food = bot.inventory.items().find((item) => item.name.includes("cooked") || item.name.includes("apple") || item.name.includes("steak"));
+    const needsFood = bot.food < autoEat.settings.healthThreshold || bot.foodSaturation !== void 0 && bot.foodSaturation < autoEat.settings.saturationThreshold;
+    if (needsFood && !autoEat.eating) {
+      let food = null;
+      if (autoEat.settings.preferGoldenApple && bot.health < 10) {
+        food = bot.inventory.items().find(
+          (item) => item.name === "golden_apple" || item.name === "enchanted_golden_apple"
+        );
+      }
+      if (!food) {
+        const foods = bot.inventory.items().filter(
+          (item) => item.name.includes("cooked") || item.name.includes("apple") || item.name.includes("steak") || item.name.includes("bread") || item.name.includes("porkchop") || item.name.includes("chicken")
+        );
+        food = foods.find((item) => item.name.includes("golden_apple")) || foods.find((item) => item.name.includes("cooked")) || foods[0];
+      }
       if (food) {
         autoEat.eating = true;
-        bot.equip(food, "hand").then(() => bot.consume()).then(() => autoEat.eating = false).catch(() => autoEat.eating = false);
+        bot.equip(food, "hand").then(() => bot.consume()).then(() => {
+          autoEat.eating = false;
+        }).catch(() => {
+          autoEat.eating = false;
+        });
       }
     }
   };
   registerModule(autoEat);
-  const chestStealer = new Module("cheststealer", "Chest Stealer", "Player", "Steal items from chests", { delay: 100 });
+  const autoTotem = new Module("autototem", "Auto Totem", "Player", "Auto-equip totem in offhand", {
+    healthThreshold: 16,
+    checkInterval: 5
+  });
+  let totemTick = 0;
+  autoTotem.onTick = (bot) => {
+    totemTick++;
+    if (totemTick % autoTotem.settings.checkInterval !== 0) return;
+    const needsTotem = bot.health <= autoTotem.settings.healthThreshold;
+    const offhandItem = bot.inventory.slots[45];
+    if (needsTotem && (!offhandItem || offhandItem.name !== "totem_of_undying")) {
+      const totem = bot.inventory.items().find((item) => item.name === "totem_of_undying");
+      if (totem) {
+        bot.equip(totem, "off-hand").catch(() => {
+        });
+      }
+    }
+  };
+  registerModule(autoTotem);
+  const inventorySorter = new Module("inventorysorter", "Inventory Sorter", "Player", "Auto-organize inventory", {
+    enabled: false,
+    sortBy: "type"
+    // 'type' | 'value'
+  });
+  let sorting = false;
+  inventorySorter.onTick = async (bot) => {
+    if (!inventorySorter.settings.enabled || sorting || bot.currentWindow) return;
+    sorting = true;
+    try {
+      const items = [];
+      for (let slot = 9; slot < 36; slot++) {
+        const item = bot.inventory.slots[slot];
+        if (item && item.name !== "air") {
+          items.push({ slot, item });
+        }
+      }
+      if (items.length === 0) {
+        sorting = false;
+        return;
+      }
+      if (inventorySorter.settings.sortBy === "type") {
+        items.sort((a, b) => {
+          if (a.item.name < b.item.name) return -1;
+          if (a.item.name > b.item.name) return 1;
+          return 0;
+        });
+      }
+      for (let i = 0; i < items.length; i++) {
+        const targetSlot = 9 + i;
+        const currentItem = items[i];
+        if (currentItem.slot !== targetSlot) {
+          const targetItem = bot.inventory.slots[targetSlot];
+          if (!targetItem || targetItem.name === "air" || targetItem.name === currentItem.item.name) {
+            try {
+              await bot.moveSlotItem(currentItem.slot, targetSlot);
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            } catch (e) {
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Inventory sort error:", e);
+    } finally {
+      sorting = false;
+    }
+  };
+  registerModule(inventorySorter);
+  const autoRefill = new Module("autorefill", "Auto Refill", "Player", "Keep hotbar filled from inventory", {
+    enabled: true,
+    slots: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    // All hotbar slots
+  });
+  let refillTick = 0;
+  let refilling = false;
+  autoRefill.onTick = async (bot) => {
+    refillTick++;
+    if (refillTick % 20 !== 0 || refilling || bot.currentWindow) return;
+    refilling = true;
+    try {
+      for (const slotIndex of autoRefill.settings.slots) {
+        const hotbarSlot = bot.inventory.slots[36 + slotIndex];
+        if (!hotbarSlot || hotbarSlot.name === "air" || hotbarSlot.count === 0) {
+          const itemType = hotbarSlot?.name;
+          let replacement = null;
+          if (itemType) {
+            replacement = bot.inventory.items().find(
+              (item) => item.name === itemType && item.slot >= 9 && item.slot < 36
+            );
+          }
+          if (!replacement) {
+            replacement = bot.inventory.items().find(
+              (item) => item.slot >= 9 && item.slot < 36 && item.name !== "air"
+            );
+          }
+          if (replacement) {
+            try {
+              await bot.moveSlotItem(replacement.slot, 36 + slotIndex);
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            } catch (e) {
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Auto-refill error:", e);
+    } finally {
+      refilling = false;
+    }
+  };
+  registerModule(autoRefill);
+  const chestStealer = new Module("cheststealer", "Chest Stealer", "Player", "Steal items from chests", {
+    delay: 100,
+    takeAll: true,
+    filter: []
+  });
+  let chestWindow = null;
+  let stealing = false;
   chestStealer.onToggle = (enabled) => {
+    if (enabled && window.bot) {
+      window.bot.on("windowOpen", (window2) => {
+        if (window2.type === "chest" || window2.type === "generic_9x3" || window2.type === "generic_9x6") {
+          chestWindow = window2;
+          stealing = true;
+          stealFromChest(window2.bot, window2);
+        }
+      });
+      window.bot.on("windowClose", () => {
+        chestWindow = null;
+        stealing = false;
+      });
+    }
+  };
+  const stealFromChest = async (bot, window2) => {
+    if (!chestStealer.enabled || !stealing) return;
+    const chestSlots = window2.inventoryStart || 54;
+    for (let slot = 0; slot < chestSlots; slot++) {
+      const item = window2.slots[slot];
+      if (!item || item.name === "air") continue;
+      if (chestStealer.settings.filter.length > 0) {
+        const matches = chestStealer.settings.filter.some((f) => item.name.includes(f));
+        if (!matches) continue;
+      }
+      try {
+        await new Promise((resolve) => setTimeout(resolve, chestStealer.settings.delay));
+        bot.clickWindow(slot, 0, 0);
+        if (!chestStealer.settings.takeAll) break;
+      } catch (e) {
+      }
+    }
   };
   registerModule(chestStealer);
 };
 
 // anticlient/src/modules/world.js
 var loadWorldModules = () => {
-  const nuker = new Module("nuker", "Nuker", "World", "Break blocks around you", { range: 4 });
+  const nuker = new Module("nuker", "Nuker", "World", "Break blocks around you", {
+    range: 4,
+    filter: [],
+    mode: "all"
+    // 'all' | 'filter'
+  });
   nuker.onTick = (bot) => {
     if (bot.targetDigBlock) return;
     const target = bot.findBlock({
-      matching: (block) => block.name !== "air" && block.name !== "bedrock" && block.hardness < 100,
-      // Filter
+      matching: (block) => {
+        if (block.name === "air" || block.name === "bedrock" || block.hardness >= 100) return false;
+        if (nuker.settings.mode === "filter" && nuker.settings.filter.length > 0) {
+          return nuker.settings.filter.some((f) => block.name.includes(f));
+        }
+        return true;
+      },
       maxDistance: nuker.settings.range
     });
     if (target) {
@@ -263,8 +828,96 @@ var loadWorldModules = () => {
     }
   };
   registerModule(nuker);
-  const fastPlace = new Module("fastplace", "Fast Place", "World", "Place blocks faster", {});
+  const fastPlace = new Module("fastplace", "Fast Place", "World", "Place blocks faster", { delay: 0 });
+  let originalPlaceBlock = null;
+  fastPlace.onToggle = (enabled) => {
+    if (!window.bot) return;
+    if (enabled && !originalPlaceBlock) {
+      originalPlaceBlock = window.bot.placeBlock.bind(window.bot);
+      window.bot.placeBlock = async function(referenceBlock, faceVector) {
+        return originalPlaceBlock(referenceBlock, faceVector);
+      };
+    } else if (!enabled && originalPlaceBlock) {
+      window.bot.placeBlock = originalPlaceBlock;
+      originalPlaceBlock = null;
+    }
+  };
   registerModule(fastPlace);
+  const fastBreak = new Module("fastbreak", "Fast Break", "World", "Break blocks faster", { multiplier: 0.5 });
+  let originalDigTime = null;
+  fastBreak.onToggle = (enabled) => {
+    if (!window.bot) return;
+    if (enabled && !originalDigTime) {
+      originalDigTime = window.bot.digTime.bind(window.bot);
+      window.bot.digTime = function(block) {
+        const originalTime = originalDigTime(block);
+        return originalTime * fastBreak.settings.multiplier;
+      };
+    } else if (!enabled && originalDigTime) {
+      window.bot.digTime = originalDigTime;
+      originalDigTime = null;
+    }
+  };
+  fastBreak.onTick = (bot) => {
+  };
+  registerModule(fastBreak);
+  const xray = new Module("xray", "X-Ray", "World", "Highlight ores and valuable blocks", {
+    blocks: ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore", "ancient_debris", "nether_gold_ore"],
+    color: "#00ff00",
+    range: 32
+  });
+  xray.lastScan = 0;
+  xray.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.xray = enabled;
+    window.anticlient.visuals.xraySettings = xray.settings;
+  };
+  xray.onTick = (bot) => {
+    if (Date.now() - xray.lastScan > 1e3) {
+      const blocks = bot.findBlocks({
+        matching: (block) => xray.settings.blocks.some((name) => block.name.includes(name)),
+        maxDistance: xray.settings.range,
+        count: 200
+      });
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.xrayBlocks = blocks;
+      }
+      xray.lastScan = Date.now();
+    }
+  };
+  xray.settings = new Proxy(xray.settings, {
+    set: (target, prop, value) => {
+      target[prop] = value;
+      if (window.anticlient?.visuals) window.anticlient.visuals.xraySettings = target;
+      return true;
+    }
+  });
+  registerModule(xray);
+  const autoMine = new Module("automine", "Auto Mine", "World", "Automatically mine target blocks", {
+    targetBlocks: ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore"],
+    range: 16,
+    pathfind: false
+  });
+  autoMine.onTick = (bot) => {
+    if (bot.targetDigBlock) return;
+    const target = bot.findBlock({
+      matching: (block) => autoMine.settings.targetBlocks.some((name) => block.name.includes(name)),
+      maxDistance: autoMine.settings.range
+    });
+    if (target) {
+      const distance = bot.entity.position.distanceTo(target.position);
+      if (distance < 5) {
+        bot.dig(target).catch(() => {
+        });
+      } else if (!autoMine.settings.pathfind) {
+        bot.lookAt(target.position);
+        bot.setControlState("forward", true);
+        setTimeout(() => bot.setControlState("forward", false), 100);
+      }
+    }
+  };
+  registerModule(autoMine);
 };
 
 // anticlient/src/modules/client.js
@@ -337,6 +990,116 @@ var loadClientModules = () => {
     }
   };
   registerModule(settings);
+};
+
+// anticlient/src/modules/packets.js
+var loadPacketsModules = () => {
+  const packetViewer = new Module("packetviewer", "Packet Viewer", "Packets", "View all Minecraft network packets", {
+    enabled: false,
+    maxPackets: 100,
+    filter: "",
+    direction: "both"
+    // 'incoming' | 'outgoing' | 'both'
+  });
+  packetViewer.packets = [];
+  let packetListeners = [];
+  packetViewer.onToggle = (enabled) => {
+    if (enabled && (!window.bot || !window.bot._client)) {
+      const checkBot = setInterval(() => {
+        if (window.bot && window.bot._client) {
+          clearInterval(checkBot);
+          packetViewer.onToggle(true);
+        }
+      }, 100);
+      setTimeout(() => clearInterval(checkBot), 1e4);
+      return;
+    }
+    if (!window.bot || !window.bot._client) return;
+    if (enabled) {
+      packetViewer.packets = [];
+      const originalWrite = window.bot._client.write.bind(window.bot._client);
+      window.bot._client.write = function(name, params) {
+        if (packetViewer.enabled && (packetViewer.settings.direction === "both" || packetViewer.settings.direction === "outgoing")) {
+          addPacket("outgoing", name, params);
+        }
+        return originalWrite(name, params);
+      };
+      packetViewer._originalWrite = originalWrite;
+      const commonEvents = [
+        "position",
+        "look",
+        "chat",
+        "entity_velocity",
+        "entity_metadata",
+        "entity_equipment",
+        "entity_status",
+        "update_health",
+        "experience",
+        "block_change",
+        "multi_block_change",
+        "chunk_data",
+        "map_chunk",
+        "unload_chunk",
+        "window_items",
+        "set_slot",
+        "open_window",
+        "close_window",
+        "player_list_item",
+        "player_info",
+        "spawn_entity",
+        "spawn_entity_living",
+        "entity_destroy",
+        "entity_move",
+        "entity_look",
+        "entity_head_rotation",
+        "entity_teleport",
+        "entity_properties",
+        "entity_effect",
+        "remove_entity_effect"
+      ];
+      commonEvents.forEach((eventName) => {
+        const listener = (...args) => {
+          if (packetViewer.enabled && (packetViewer.settings.direction === "both" || packetViewer.settings.direction === "incoming")) {
+            addPacket("incoming", eventName, args);
+          }
+        };
+        window.bot._client.on(eventName, listener);
+        packetListeners.push({ event: eventName, listener });
+      });
+    } else {
+      if (packetViewer._originalWrite) {
+        window.bot._client.write = packetViewer._originalWrite;
+        packetViewer._originalWrite = null;
+      }
+      packetListeners.forEach(({ event, listener }) => {
+        window.bot._client.removeListener(event, listener);
+      });
+      packetListeners = [];
+    }
+  };
+  const addPacket = (direction, name, data) => {
+    const packet = {
+      direction,
+      name,
+      data: JSON.stringify(data, null, 2),
+      timestamp: Date.now(),
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    if (packetViewer.settings.filter && packetViewer.settings.filter.trim() !== "") {
+      const filter = packetViewer.settings.filter.toLowerCase();
+      if (!name.toLowerCase().includes(filter) && !packet.data.toLowerCase().includes(filter)) {
+        return;
+      }
+    }
+    packetViewer.packets.unshift(packet);
+    if (packetViewer.packets.length > packetViewer.settings.maxPackets) {
+      packetViewer.packets.pop();
+    }
+    if (window.anticlient && window.anticlient.ui && window.anticlient.ui.updatePacketViewer) {
+      window.anticlient.ui.updatePacketViewer();
+    }
+  };
+  registerModule(packetViewer);
 };
 
 // anticlient/src/ui/index.js
@@ -651,6 +1414,10 @@ var initUI = () => {
   };
   const renderModules = () => {
     contentContainer.innerHTML = "";
+    if (activeTab === "Packets") {
+      renderPackets();
+      return;
+    }
     const catMods = categories[activeTab] || [];
     if (!catMods.length) {
       const emptyMsg = document.createElement("div");
@@ -811,6 +1578,154 @@ var initUI = () => {
       contentContainer.appendChild(modEl);
     });
   };
+  const renderPackets = () => {
+    const packetViewer = modules["packetviewer"];
+    if (!packetViewer) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.textContent = "Packet Viewer module not found.";
+      emptyMsg.style.color = "#555";
+      emptyMsg.style.textAlign = "center";
+      emptyMsg.style.marginTop = "20px";
+      contentContainer.appendChild(emptyMsg);
+      return;
+    }
+    const controlsDiv = document.createElement("div");
+    controlsDiv.style.marginBottom = "10px";
+    controlsDiv.style.padding = "10px";
+    controlsDiv.style.backgroundColor = "#1a1a20";
+    controlsDiv.style.borderRadius = "4px";
+    controlsDiv.style.display = "flex";
+    controlsDiv.style.gap = "10px";
+    controlsDiv.style.alignItems = "center";
+    controlsDiv.style.flexWrap = "wrap";
+    const toggleBtn = document.createElement("button");
+    toggleBtn.textContent = packetViewer.enabled ? "Disable" : "Enable";
+    toggleBtn.style.padding = "4px 12px";
+    toggleBtn.style.background = packetViewer.enabled ? "#d32f2f" : "#2e7d32";
+    toggleBtn.style.color = "white";
+    toggleBtn.style.border = "none";
+    toggleBtn.style.cursor = "pointer";
+    toggleBtn.style.borderRadius = "2px";
+    toggleBtn.onclick = () => {
+      packetViewer.toggle();
+      toggleBtn.textContent = packetViewer.enabled ? "Disable" : "Enable";
+      toggleBtn.style.background = packetViewer.enabled ? "#d32f2f" : "#2e7d32";
+    };
+    controlsDiv.appendChild(toggleBtn);
+    const filterLabel = document.createElement("span");
+    filterLabel.textContent = "Filter:";
+    filterLabel.style.color = "#e0e0e0";
+    controlsDiv.appendChild(filterLabel);
+    const filterInput = document.createElement("input");
+    filterInput.type = "text";
+    filterInput.placeholder = "Packet name...";
+    filterInput.value = packetViewer.settings.filter || "";
+    filterInput.style.background = "#000";
+    filterInput.style.color = "white";
+    filterInput.style.border = "1px solid #444";
+    filterInput.style.padding = "4px 8px";
+    filterInput.style.borderRadius = "2px";
+    filterInput.style.width = "150px";
+    filterInput.oninput = (e) => {
+      packetViewer.settings.filter = e.target.value;
+    };
+    controlsDiv.appendChild(filterInput);
+    const directionLabel = document.createElement("span");
+    directionLabel.textContent = "Direction:";
+    directionLabel.style.color = "#e0e0e0";
+    controlsDiv.appendChild(directionLabel);
+    const directionSelect = document.createElement("select");
+    directionSelect.style.background = "#000";
+    directionSelect.style.color = "white";
+    directionSelect.style.border = "1px solid #444";
+    directionSelect.style.padding = "4px 8px";
+    directionSelect.style.borderRadius = "2px";
+    directionSelect.innerHTML = '<option value="both">Both</option><option value="incoming">Incoming</option><option value="outgoing">Outgoing</option>';
+    directionSelect.value = packetViewer.settings.direction || "both";
+    directionSelect.onchange = (e) => {
+      packetViewer.settings.direction = e.target.value;
+    };
+    controlsDiv.appendChild(directionSelect);
+    const clearBtn = document.createElement("button");
+    clearBtn.textContent = "Clear";
+    clearBtn.style.padding = "4px 12px";
+    clearBtn.style.background = "#333";
+    clearBtn.style.color = "white";
+    clearBtn.style.border = "1px solid #444";
+    clearBtn.style.cursor = "pointer";
+    clearBtn.style.borderRadius = "2px";
+    clearBtn.onclick = () => {
+      packetViewer.packets = [];
+      renderPackets();
+    };
+    controlsDiv.appendChild(clearBtn);
+    contentContainer.appendChild(controlsDiv);
+    const packetList = document.createElement("div");
+    packetList.style.maxHeight = "400px";
+    packetList.style.overflowY = "auto";
+    packetList.style.display = "flex";
+    packetList.style.flexDirection = "column";
+    packetList.style.gap = "5px";
+    if (!packetViewer.packets || packetViewer.packets.length === 0) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.textContent = "No packets captured. Enable packet viewer to start capturing.";
+      emptyMsg.style.color = "#555";
+      emptyMsg.style.textAlign = "center";
+      emptyMsg.style.marginTop = "20px";
+      packetList.appendChild(emptyMsg);
+    } else {
+      packetViewer.packets.forEach((packet) => {
+        const packetEl = document.createElement("div");
+        packetEl.style.backgroundColor = "#1a1a20";
+        packetEl.style.padding = "8px";
+        packetEl.style.borderRadius = "4px";
+        packetEl.style.borderLeft = `3px solid ${packet.direction === "incoming" ? "#4caf50" : "#2196f3"}`;
+        packetEl.style.fontSize = "0.85em";
+        packetEl.style.cursor = "pointer";
+        const header2 = document.createElement("div");
+        header2.style.display = "flex";
+        header2.style.justifyContent = "space-between";
+        header2.style.marginBottom = "5px";
+        header2.style.color = packet.direction === "incoming" ? "#4caf50" : "#2196f3";
+        header2.style.fontWeight = "bold";
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = packet.name;
+        header2.appendChild(nameSpan);
+        const timeSpan = document.createElement("span");
+        timeSpan.textContent = new Date(packet.timestamp).toLocaleTimeString();
+        timeSpan.style.color = "#777";
+        timeSpan.style.fontSize = "0.9em";
+        header2.appendChild(timeSpan);
+        packetEl.appendChild(header2);
+        const dataPre = document.createElement("pre");
+        dataPre.style.margin = "0";
+        dataPre.style.color = "#ccc";
+        dataPre.style.fontSize = "0.8em";
+        dataPre.style.maxHeight = "100px";
+        dataPre.style.overflow = "auto";
+        dataPre.style.whiteSpace = "pre-wrap";
+        dataPre.style.wordBreak = "break-all";
+        dataPre.textContent = packet.data.length > 500 ? packet.data.substring(0, 500) + "..." : packet.data;
+        packetEl.appendChild(dataPre);
+        let expanded = false;
+        packetEl.onclick = () => {
+          expanded = !expanded;
+          if (expanded) {
+            dataPre.textContent = packet.data;
+            dataPre.style.maxHeight = "300px";
+          } else {
+            dataPre.textContent = packet.data.length > 500 ? packet.data.substring(0, 500) + "..." : packet.data;
+            dataPre.style.maxHeight = "100px";
+          }
+        };
+        packetList.appendChild(packetEl);
+      });
+    }
+    contentContainer.appendChild(packetList);
+    if (!window.anticlient) window.anticlient = {};
+    if (!window.anticlient.ui) window.anticlient.ui = {};
+    window.anticlient.ui.updatePacketViewer = renderPackets;
+  };
   const renderTabs = () => {
     sidebar.innerHTML = "";
     Object.keys(categories).forEach((cat) => {
@@ -890,6 +1805,7 @@ var entry_default = (mod) => {
   loadPlayerModules();
   loadWorldModules();
   loadClientModules();
+  loadPacketsModules();
   const cleanupUI = initUI();
   let bot = void 0;
   let loopRunning = true;
