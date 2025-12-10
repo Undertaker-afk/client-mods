@@ -110,5 +110,182 @@ export const loadPacketsModules = () => {
     }
     
     registerModule(packetViewer)
+
+    // -- Fake Lag / Packet Delay --
+    const fakeLag = new Module('fakelag', 'Fake Lag', 'Packets', 'Delay outgoing/incoming packets to simulate lag', {
+        enabled: false,
+        outgoingDelay: 100, // ms
+        incomingDelay: 100, // ms
+        delayOutgoing: true,
+        delayIncoming: false,
+        packetFilter: '', // Filter specific packets (comma separated)
+        randomJitter: 0, // Random jitter in ms (0-100)
+        burstMode: false, // Send all delayed packets at once
+        burstInterval: 1000 // ms between bursts
+    })
+
+    let outgoingQueue = []
+    let incomingQueue = []
+    let burstTimer = null
+    let incomingListeners = []
+
+    fakeLag.onToggle = (enabled) => {
+        if (enabled && (!window.bot || !window.bot._client)) {
+            const checkBot = setInterval(() => {
+                if (window.bot && window.bot._client) {
+                    clearInterval(checkBot)
+                    fakeLag.onToggle(true)
+                }
+            }, 100)
+            setTimeout(() => clearInterval(checkBot), 10000)
+            return
+        }
+
+        if (!window.bot || !window.bot._client) return
+
+        if (enabled) {
+            outgoingQueue = []
+            incomingQueue = []
+
+            // Store original write function
+            const originalWrite = window.bot._client.write.bind(window.bot._client)
+            fakeLag._originalWrite = originalWrite
+
+            // Intercept outgoing packets
+            window.bot._client.write = function(name, params) {
+                if (!fakeLag.enabled || !fakeLag.settings.delayOutgoing) {
+                    return originalWrite(name, params)
+                }
+
+                // Check if packet matches filter
+                if (shouldDelayPacket(name)) {
+                    const delay = calculateDelay(fakeLag.settings.outgoingDelay, fakeLag.settings.randomJitter)
+
+                    if (fakeLag.settings.burstMode) {
+                        outgoingQueue.push({ name, params, originalWrite })
+                    } else {
+                        setTimeout(() => {
+                            if (fakeLag.enabled) {
+                                originalWrite(name, params)
+                            }
+                        }, delay)
+                    }
+                } else {
+                    return originalWrite(name, params)
+                }
+            }
+
+            // Intercept incoming packets using 'packet' event
+            if (fakeLag.settings.delayIncoming) {
+                // Common packet events to intercept
+                const commonEvents = [
+                    'position', 'look', 'position_look', 'entity_velocity', 'entity_metadata',
+                    'entity_equipment', 'entity_status', 'update_health', 'experience',
+                    'block_change', 'multi_block_change', 'map_chunk', 'unload_chunk',
+                    'window_items', 'set_slot', 'spawn_entity', 'spawn_entity_living',
+                    'entity_destroy', 'entity_move', 'entity_look', 'entity_head_rotation',
+                    'entity_teleport', 'rel_entity_move', 'entity_move_look'
+                ]
+
+                commonEvents.forEach(eventName => {
+                    const delayedListener = (...args) => {
+                        if (!fakeLag.enabled || !fakeLag.settings.delayIncoming) {
+                            return
+                        }
+
+                        if (shouldDelayPacket(eventName)) {
+                            const delay = calculateDelay(fakeLag.settings.incomingDelay, fakeLag.settings.randomJitter)
+
+                            if (fakeLag.settings.burstMode) {
+                                incomingQueue.push({ event: eventName, args })
+                            } else {
+                                setTimeout(() => {
+                                    if (fakeLag.enabled) {
+                                        // Process the delayed packet by calling original handlers
+                                        window.bot._client.emit('_delayed_' + eventName, ...args)
+                                    }
+                                }, delay)
+                            }
+                        }
+                    }
+
+                    // Add listener with high priority (prepend)
+                    window.bot._client.prependListener(eventName, delayedListener)
+                    incomingListeners.push({ event: eventName, listener: delayedListener })
+                })
+            }
+
+            // Burst mode timer
+            if (fakeLag.settings.burstMode) {
+                burstTimer = setInterval(() => {
+                    // Send all queued outgoing packets
+                    while (outgoingQueue.length > 0) {
+                        const { name, params, originalWrite } = outgoingQueue.shift()
+                        if (fakeLag.enabled) {
+                            originalWrite(name, params)
+                        }
+                    }
+
+                    // Process all queued incoming packets
+                    while (incomingQueue.length > 0) {
+                        const { event, args } = incomingQueue.shift()
+                        if (fakeLag.enabled) {
+                            window.bot._client.emit('_delayed_' + event, ...args)
+                        }
+                    }
+                }, fakeLag.settings.burstInterval)
+            }
+
+        } else {
+            // Restore original write
+            if (fakeLag._originalWrite) {
+                window.bot._client.write = fakeLag._originalWrite
+                fakeLag._originalWrite = null
+            }
+
+            // Remove incoming packet listeners
+            incomingListeners.forEach(({ event, listener }) => {
+                window.bot._client.removeListener(event, listener)
+            })
+            incomingListeners = []
+
+            // Clear burst timer
+            if (burstTimer) {
+                clearInterval(burstTimer)
+                burstTimer = null
+            }
+
+            // Flush remaining packets
+            while (outgoingQueue.length > 0) {
+                const { name, params, originalWrite } = outgoingQueue.shift()
+                originalWrite(name, params)
+            }
+            while (incomingQueue.length > 0) {
+                const { event, args } = incomingQueue.shift()
+                window.bot._client.emit('_delayed_' + event, ...args)
+            }
+
+            outgoingQueue = []
+            incomingQueue = []
+        }
+    }
+
+    // Helper to check if packet should be delayed
+    const shouldDelayPacket = (packetName) => {
+        const filter = fakeLag.settings.packetFilter.trim()
+        if (!filter) return true // No filter = delay all
+
+        const filters = filter.split(',').map(f => f.trim().toLowerCase())
+        return filters.some(f => packetName.toLowerCase().includes(f))
+    }
+
+    // Calculate delay with optional jitter
+    const calculateDelay = (baseDelay, jitter) => {
+        if (jitter <= 0) return baseDelay
+        const randomJitter = Math.random() * jitter * 2 - jitter // -jitter to +jitter
+        return Math.max(0, baseDelay + randomJitter)
+    }
+
+    registerModule(fakeLag)
 }
 

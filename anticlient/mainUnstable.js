@@ -1469,6 +1469,165 @@ var loadPacketsModules = () => {
     }
   };
   registerModule(packetViewer);
+  const fakeLag = new Module("fakelag", "Fake Lag", "Packets", "Delay outgoing/incoming packets to simulate lag", {
+    enabled: false,
+    outgoingDelay: 100,
+    // ms
+    incomingDelay: 100,
+    // ms
+    delayOutgoing: true,
+    delayIncoming: false,
+    packetFilter: "",
+    // Filter specific packets (comma separated)
+    randomJitter: 0,
+    // Random jitter in ms (0-100)
+    burstMode: false,
+    // Send all delayed packets at once
+    burstInterval: 1e3
+    // ms between bursts
+  });
+  let outgoingQueue = [];
+  let incomingQueue = [];
+  let burstTimer = null;
+  let incomingListeners = [];
+  fakeLag.onToggle = (enabled) => {
+    if (enabled && (!window.bot || !window.bot._client)) {
+      const checkBot = setInterval(() => {
+        if (window.bot && window.bot._client) {
+          clearInterval(checkBot);
+          fakeLag.onToggle(true);
+        }
+      }, 100);
+      setTimeout(() => clearInterval(checkBot), 1e4);
+      return;
+    }
+    if (!window.bot || !window.bot._client) return;
+    if (enabled) {
+      outgoingQueue = [];
+      incomingQueue = [];
+      const originalWrite = window.bot._client.write.bind(window.bot._client);
+      fakeLag._originalWrite = originalWrite;
+      window.bot._client.write = function(name, params) {
+        if (!fakeLag.enabled || !fakeLag.settings.delayOutgoing) {
+          return originalWrite(name, params);
+        }
+        if (shouldDelayPacket(name)) {
+          const delay = calculateDelay(fakeLag.settings.outgoingDelay, fakeLag.settings.randomJitter);
+          if (fakeLag.settings.burstMode) {
+            outgoingQueue.push({ name, params, originalWrite });
+          } else {
+            setTimeout(() => {
+              if (fakeLag.enabled) {
+                originalWrite(name, params);
+              }
+            }, delay);
+          }
+        } else {
+          return originalWrite(name, params);
+        }
+      };
+      if (fakeLag.settings.delayIncoming) {
+        const commonEvents = [
+          "position",
+          "look",
+          "position_look",
+          "entity_velocity",
+          "entity_metadata",
+          "entity_equipment",
+          "entity_status",
+          "update_health",
+          "experience",
+          "block_change",
+          "multi_block_change",
+          "map_chunk",
+          "unload_chunk",
+          "window_items",
+          "set_slot",
+          "spawn_entity",
+          "spawn_entity_living",
+          "entity_destroy",
+          "entity_move",
+          "entity_look",
+          "entity_head_rotation",
+          "entity_teleport",
+          "rel_entity_move",
+          "entity_move_look"
+        ];
+        commonEvents.forEach((eventName) => {
+          const delayedListener = (...args) => {
+            if (!fakeLag.enabled || !fakeLag.settings.delayIncoming) {
+              return;
+            }
+            if (shouldDelayPacket(eventName)) {
+              const delay = calculateDelay(fakeLag.settings.incomingDelay, fakeLag.settings.randomJitter);
+              if (fakeLag.settings.burstMode) {
+                incomingQueue.push({ event: eventName, args });
+              } else {
+                setTimeout(() => {
+                  if (fakeLag.enabled) {
+                    window.bot._client.emit("_delayed_" + eventName, ...args);
+                  }
+                }, delay);
+              }
+            }
+          };
+          window.bot._client.prependListener(eventName, delayedListener);
+          incomingListeners.push({ event: eventName, listener: delayedListener });
+        });
+      }
+      if (fakeLag.settings.burstMode) {
+        burstTimer = setInterval(() => {
+          while (outgoingQueue.length > 0) {
+            const { name, params, originalWrite: originalWrite2 } = outgoingQueue.shift();
+            if (fakeLag.enabled) {
+              originalWrite2(name, params);
+            }
+          }
+          while (incomingQueue.length > 0) {
+            const { event, args } = incomingQueue.shift();
+            if (fakeLag.enabled) {
+              window.bot._client.emit("_delayed_" + event, ...args);
+            }
+          }
+        }, fakeLag.settings.burstInterval);
+      }
+    } else {
+      if (fakeLag._originalWrite) {
+        window.bot._client.write = fakeLag._originalWrite;
+        fakeLag._originalWrite = null;
+      }
+      incomingListeners.forEach(({ event, listener }) => {
+        window.bot._client.removeListener(event, listener);
+      });
+      incomingListeners = [];
+      if (burstTimer) {
+        clearInterval(burstTimer);
+        burstTimer = null;
+      }
+      while (outgoingQueue.length > 0) {
+        const { name, params, originalWrite } = outgoingQueue.shift();
+        originalWrite(name, params);
+      }
+      while (incomingQueue.length > 0) {
+        const { event, args } = incomingQueue.shift();
+        window.bot._client.emit("_delayed_" + event, ...args);
+      }
+      outgoingQueue = [];
+      incomingQueue = [];
+    }
+  };
+  const shouldDelayPacket = (packetName) => {
+    const filter = fakeLag.settings.packetFilter.trim();
+    if (!filter) return true;
+    const filters = filter.split(",").map((f) => f.trim().toLowerCase());
+    return filters.some((f) => packetName.toLowerCase().includes(f));
+  };
+  const calculateDelay = (baseDelay, jitter) => {
+    if (jitter <= 0) return baseDelay;
+    const randomJitter = Math.random() * jitter * 2 - jitter;
+    return Math.max(0, baseDelay + randomJitter);
+  };
+  registerModule(fakeLag);
 };
 
 // anticlient/src/ui/index.js
@@ -2497,6 +2656,111 @@ var initUI = () => {
   };
   const renderPackets = () => {
     contentContainer.innerHTML = "";
+    const fakeLag = modules["fakelag"];
+    if (fakeLag) {
+      const fakeLagSection = document.createElement("div");
+      fakeLagSection.style.marginBottom = "15px";
+      fakeLagSection.style.padding = "12px";
+      fakeLagSection.style.backgroundColor = "#1a1a20";
+      fakeLagSection.style.borderRadius = "6px";
+      fakeLagSection.style.border = "1px solid #333";
+      const fakeLagHeader = document.createElement("div");
+      fakeLagHeader.style.display = "flex";
+      fakeLagHeader.style.justifyContent = "space-between";
+      fakeLagHeader.style.alignItems = "center";
+      fakeLagHeader.style.marginBottom = "10px";
+      const fakeLagTitle = document.createElement("h3");
+      fakeLagTitle.textContent = "\u{1F310} Fake Lag / Packet Delay";
+      fakeLagTitle.style.margin = "0";
+      fakeLagTitle.style.color = "#00ffff";
+      fakeLagTitle.style.fontSize = "16px";
+      fakeLagHeader.appendChild(fakeLagTitle);
+      const fakeLagToggle = document.createElement("button");
+      fakeLagToggle.textContent = fakeLag.enabled ? "Disable" : "Enable";
+      fakeLagToggle.style.padding = "6px 16px";
+      fakeLagToggle.style.background = fakeLag.enabled ? "#d32f2f" : "#2e7d32";
+      fakeLagToggle.style.color = "white";
+      fakeLagToggle.style.border = "none";
+      fakeLagToggle.style.cursor = "pointer";
+      fakeLagToggle.style.borderRadius = "4px";
+      fakeLagToggle.style.fontWeight = "bold";
+      fakeLagToggle.onclick = () => {
+        fakeLag.toggle();
+        fakeLagToggle.textContent = fakeLag.enabled ? "Disable" : "Enable";
+        fakeLagToggle.style.background = fakeLag.enabled ? "#d32f2f" : "#2e7d32";
+      };
+      fakeLagHeader.appendChild(fakeLagToggle);
+      fakeLagSection.appendChild(fakeLagHeader);
+      const settingsGrid = document.createElement("div");
+      settingsGrid.style.display = "grid";
+      settingsGrid.style.gridTemplateColumns = "1fr 1fr";
+      settingsGrid.style.gap = "10px";
+      const createSetting = (label, type, key, options = {}) => {
+        const row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.flexDirection = "column";
+        row.style.gap = "4px";
+        const labelEl = document.createElement("label");
+        labelEl.textContent = label;
+        labelEl.style.color = "#aaa";
+        labelEl.style.fontSize = "12px";
+        row.appendChild(labelEl);
+        if (type === "number") {
+          const input = document.createElement("input");
+          input.type = "number";
+          input.value = fakeLag.settings[key];
+          input.min = options.min || 0;
+          input.max = options.max || 1e4;
+          input.style.background = "#000";
+          input.style.color = "white";
+          input.style.border = "1px solid #444";
+          input.style.padding = "6px";
+          input.style.borderRadius = "4px";
+          input.oninput = (e) => {
+            fakeLag.settings[key] = parseInt(e.target.value) || 0;
+          };
+          row.appendChild(input);
+        } else if (type === "checkbox") {
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = fakeLag.settings[key];
+          checkbox.style.width = "20px";
+          checkbox.style.height = "20px";
+          checkbox.style.cursor = "pointer";
+          checkbox.onchange = (e) => {
+            fakeLag.settings[key] = e.target.checked;
+          };
+          row.appendChild(checkbox);
+        } else if (type === "text") {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = fakeLag.settings[key];
+          input.placeholder = options.placeholder || "";
+          input.style.background = "#000";
+          input.style.color = "white";
+          input.style.border = "1px solid #444";
+          input.style.padding = "6px";
+          input.style.borderRadius = "4px";
+          input.oninput = (e) => {
+            fakeLag.settings[key] = e.target.value;
+          };
+          row.appendChild(input);
+        }
+        return row;
+      };
+      settingsGrid.appendChild(createSetting("Outgoing Delay (ms)", "number", "outgoingDelay", { max: 5e3 }));
+      settingsGrid.appendChild(createSetting("Incoming Delay (ms)", "number", "incomingDelay", { max: 5e3 }));
+      settingsGrid.appendChild(createSetting("Delay Outgoing", "checkbox", "delayOutgoing"));
+      settingsGrid.appendChild(createSetting("Delay Incoming", "checkbox", "delayIncoming"));
+      settingsGrid.appendChild(createSetting("Random Jitter (ms)", "number", "randomJitter", { max: 500 }));
+      settingsGrid.appendChild(createSetting("Burst Interval (ms)", "number", "burstInterval", { max: 1e4 }));
+      settingsGrid.appendChild(createSetting("Burst Mode", "checkbox", "burstMode"));
+      const filterRow = createSetting("Packet Filter (comma separated)", "text", "packetFilter", { placeholder: "position,look,chat" });
+      filterRow.style.gridColumn = "1 / -1";
+      settingsGrid.appendChild(filterRow);
+      fakeLagSection.appendChild(settingsGrid);
+      contentContainer.appendChild(fakeLagSection);
+    }
     const packetViewer = modules["packetviewer"];
     if (!packetViewer) {
       const emptyMsg = document.createElement("div");
