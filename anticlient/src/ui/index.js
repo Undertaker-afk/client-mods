@@ -38,150 +38,183 @@ export const initUI = () => {
 
     const style = document.createElement('style')
     style.id = 'anticlient-style'
-    style.textContent = `
-    .ac-window {
-        background-color: #0f0f13;
-        border: 2px solid #7c4dff;
-        border-radius: 8px;
-        box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
-        color: #e0e0e0;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        height: 500px;
-        width: 650px;
-        transition: width 0.3s ease;
-    }
-    .ac-window.expanded {
-        width: 950px;
-    }
-    .ac-header {
-        background-color: #1a1a20;
-        padding: 10px 15px;
-        border-bottom: 2px solid #7c4dff;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        cursor: move;
-        flex-shrink: 0;
-    }
-    .ac-title {
-        font-weight: bold;
-        color: #b388ff;
-        font-size: 1.1em;
-        letter-spacing: 1px;
-    }
-    .ac-body {
-        display: flex;
-        flex: 1;
-        overflow: hidden;
-    }
-    .ac-sidebar {
-        width: 150px;
-        background-color: #15151a;
-        display: flex;
-        flex-direction: column;
-        border-right: 1px solid #333;
-        flex-shrink: 0;
-    }
-    .ac-tab {
-        text-align: left;
-        padding: 15px 20px;
-        cursor: pointer;
-        background-color: transparent;
-        transition: background-color 0.2s, color 0.2s;
-        border-left: 3px solid transparent;
-        color: #777;
-        font-weight: 500;
-    }
-    .ac-tab:hover {
-        background-color: #20202a;
-        color: #fff;
-    }
-    .ac-tab.active {
-        color: #b388ff;
-        border-left: 3px solid #b388ff;
-        background-color: #1e1e24;
-    }
-    .ac-content {
-        padding: 15px;
-        flex: 1; 
-        overflow-y: auto;
-        background-color: #0f0f13;
-        min-width: 0; /* Fix flex child overflow */
-    }
-    .ac-module {
-        background-color: #1a1a20;
-        margin-bottom: 8px;
-        padding: 10px;
-        border-radius: 4px;
-        display: flex;
-        flex-direction: column;
-        border-left: 3px solid #333;
-        transition: border-left-color 0.2s;
-    }
-    .ac-module.enabled {
-        border-left: 3px solid #00e676;
-    }
-    .ac-module-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        cursor: pointer;
-    }
-    .ac-module-name {
-        font-weight: bold;
-    }
-    .ac-module-settings {
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid #333;
-        display: none;
-    }
-    .ac-module-settings.open {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    .ac-setting-row { 
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.9em;
-    }
-    .ac-input-number {
-        background: #000;
-        border: 1px solid #444;
-        color: white;
-        width: 50px;
-        padding: 2px;
-        border-radius: 2px;
-    }
-    .ac-checkbox {
-       accent-color: #7c4dff;
-    }
-    .ac-preview-panel {
-        width: 300px;
-        background-color: #111;
-        border-left: 1px solid #333;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 10px;
-        flex-shrink: 0;
-    }
-    .ac-preview-title {
-        margin-bottom: 10px;
-        color: #aaa;
-        font-size: 0.9em;
-    }
-    /* Scrollbar */
-    .ac-content::-webkit-scrollbar { width: 8px; }
-    .ac-content::-webkit-scrollbar-track { background: #0f0f13; }
-    .ac-content::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-    `
     document.head.appendChild(style)
+
+    const themes = {
+        Default: `
+            .ac-window {
+                background-color: #0f0f13;
+                border: 2px solid #7c4dff;
+                border-radius: 8px;
+                box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
+                color: #e0e0e0;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                height: 500px;
+                width: 650px;
+                transition: width 0.3s ease;
+                font-family: 'Consolas', 'Monaco', monospace;
+            }
+            .ac-window.expanded { width: 950px; }
+            .ac-header {
+                background-color: #1a1a20;
+                padding: 10px 15px;
+                border-bottom: 2px solid #7c4dff;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                cursor: move;
+                flex-shrink: 0;
+            }
+            .ac-title { font-weight: bold; color: #b388ff; font-size: 1.1em; letter-spacing: 1px; }
+            .ac-sidebar {
+                width: 150px;
+                background-color: #15151a;
+                display: flex;
+                flex-direction: column;
+                border-right: 1px solid #333;
+                flex-shrink: 0;
+            }
+            .ac-tab {
+                text-align: left;
+                padding: 15px 20px;
+                cursor: pointer;
+                background-color: transparent;
+                transition: background-color 0.2s, color 0.2s;
+                border-left: 3px solid transparent;
+                color: #777;
+                font-weight: 500;
+            }
+            .ac-tab:hover { background-color: #20202a; color: #fff; }
+            .ac-tab.active { color: #b388ff; border-left: 3px solid #b388ff; background-color: #1e1e24; }
+            .ac-module {
+                background-color: #1a1a20;
+                margin-bottom: 8px;
+                padding: 10px;
+                border-radius: 4px;
+                display: flex;
+                flex-direction: column;
+                border-left: 3px solid #333;
+                transition: border-left-color 0.2s;
+            }
+            .ac-module.enabled { border-left: 3px solid #00e676; }
+            .ac-setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; }
+            .ac-input-number, .ac-input-text { background: #000; border: 1px solid #444; color: white; padding: 2px; border-radius: 2px; }
+            .ac-checkbox { accent-color: #7c4dff; }
+            .ac-preview-panel {
+                background-color: #111;
+                border-left: 1px solid #333;
+            }
+        `,
+        Arwes: `
+            .ac-window {
+                background-color: rgba(0, 20, 20, 0.9);
+                border: 1px solid #26dafd;
+                box-shadow: 0 0 20px rgba(38, 218, 253, 0.2);
+                color: #a9fdff;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                height: 500px;
+                width: 650px;
+                transition: width 0.3s ease;
+                font-family: 'Titillium Web', sans-serif;
+                clip-path: polygon(
+                    0 0, 100% 0, 
+                    100% calc(100% - 20px), calc(100% - 20px) 100%, 
+                    0 100%
+                );
+            }
+            .ac-window.expanded { width: 950px; }
+            .ac-header {
+                background-color: rgba(6, 61, 68, 0.6);
+                padding: 10px 15px;
+                border-bottom: 1px solid #26dafd;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                cursor: move;
+                flex-shrink: 0;
+                text-shadow: 0 0 5px rgba(38, 218, 253, 0.5);
+            }
+            .ac-title { font-weight: bold; color: #26dafd; font-size: 1.2em; letter-spacing: 2px; }
+            .ac-sidebar {
+                width: 150px;
+                background-color: rgba(0, 10, 10, 0.5);
+                display: flex;
+                flex-direction: column;
+                border-right: 1px solid #1b90a8;
+                flex-shrink: 0;
+            }
+            .ac-tab {
+                text-align: left;
+                padding: 15px 20px;
+                cursor: pointer;
+                background-color: transparent;
+                transition: all 0.2s;
+                border-left: 2px solid transparent;
+                color: #1b90a8;
+                font-weight: 500;
+                opacity: 0.7;
+            }
+            .ac-tab:hover { background-color: rgba(38, 218, 253, 0.1); color: #a9fdff; opacity: 1; text-shadow: 0 0 8px rgba(38, 218, 253, 0.6); }
+            .ac-tab.active { color: #26dafd; border-left: 2px solid #26dafd; background-color: rgba(38, 218, 253, 0.15); opacity: 1; box-shadow: 0 0 10px rgba(38, 218, 253, 0.1) inset; }
+            .ac-module {
+                background-color: rgba(6, 61, 68, 0.3);
+                margin-bottom: 8px;
+                padding: 10px;
+                border: 1px solid rgba(38, 218, 253, 0.3);
+                display: flex;
+                flex-direction: column;
+                transition: all 0.2s;
+            }
+            .ac-module:hover { border-color: #26dafd; }
+            .ac-module.enabled {
+                border: 1px solid #26dafd;
+                box-shadow: 0 0 10px rgba(38, 218, 253, 0.2) inset; 
+                background-color: rgba(38, 218, 253, 0.1);
+            }
+            .ac-setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; color: #a9fdff; }
+            .ac-input-number, .ac-input-text { 
+                background: rgba(0,0,0,0.5); 
+                border: 1px solid #1b90a8; 
+                color: #26dafd; 
+                padding: 2px; 
+                font-family: inherit;
+            }
+            .ac-checkbox { accent-color: #26dafd; }
+            .ac-preview-panel {
+                background-color: rgba(0,20,20,0.8);
+                border-left: 1px solid #26dafd;
+            }
+        `
+    }
+
+    const applyTheme = (themeName) => {
+        style.textContent = themes[themeName] || themes['Default']
+        // Also inject common CSS
+        style.textContent += `
+            .ac-content { padding: 15px; flex: 1; overflow-y: auto; min-width: 0; }
+            .ac-body { display: flex; flex: 1; overflow: hidden; }
+            .ac-module-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+            .ac-module-name { font-weight: bold; }
+            .ac-module-settings { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); display: none; }
+            .ac-module-settings.open { display: flex; flex-direction: column; gap: 8px; }
+            .ac-preview-panel { width: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; flex-shrink: 0; }
+            .ac-preview-title { margin-bottom: 10px; color: inherit; opacity: 0.7; font-size: 0.9em; }
+            .ac-content::-webkit-scrollbar { width: 8px; }
+            .ac-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+            .ac-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        `
+    }
+
+    // Default Theme
+    applyTheme('Default')
+
+    // Expose for updates
+    if (!window.anticlient) window.anticlient = {}
+    window.anticlient.ui = { setTheme: applyTheme }
 
     // DOM Construction
     const windowEl = document.createElement('div')

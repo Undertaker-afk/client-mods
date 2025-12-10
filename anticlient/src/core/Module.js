@@ -30,7 +30,8 @@ export const categories = {
     'Movement': [],
     'Render': [],
     'Player': [],
-    'World': []
+    'World': [],
+    'Client': []
 }
 
 export const modules = {}

@@ -26,10 +26,10 @@
         },
         {
             "name": "anticlient",
-            "version": "1.0.1",
+            "version": "1.0.2",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t"
+            "description": "Hacked client for 2b2t \n Latest Change: Auto Updater + Themes"
         }
     ]
 }

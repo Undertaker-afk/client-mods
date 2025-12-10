@@ -3,7 +3,23 @@ import { Module, registerModule } from '../core/Module.js'
 
 export const loadMovementModules = () => {
     // -- Flight --
-    const flight = new Module('flight', 'Flight', 'Movement', 'Allows you to fly like in creative mode', { speed: 1.0 })
+    // -- Flight --
+    const flight = new Module('flight', 'Flight', 'Movement', 'Allows you to fly like in creative mode', {
+        speed: 1,
+        doubleJumpToggle: false
+    })
+
+    let lastSpacePress = 0
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && flight.settings.doubleJumpToggle) {
+            const now = Date.now()
+            if (now - lastSpacePress < 300) {
+                flight.toggle()
+            }
+            lastSpacePress = now
+        }
+    })
+
     flight.onTick = (bot) => {
         bot.entity.velocity.y = 0
         const speed = flight.settings.speed

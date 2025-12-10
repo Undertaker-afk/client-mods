@@ -4,6 +4,7 @@ import { loadMovementModules } from './src/modules/movement.js'
 import { loadRenderModules } from './src/modules/render.js'
 import { loadPlayerModules } from './src/modules/player.js'
 import { loadWorldModules } from './src/modules/world.js'
+import { loadClientModules } from './src/modules/client.js'
 import { modules } from './src/core/Module.js'
 import { initUI } from './src/ui/index.js'
 
@@ -23,6 +24,7 @@ export default (mod) => {
     loadRenderModules()
     loadPlayerModules()
     loadWorldModules()
+    loadClientModules()
 
     // 2. Initialize UI
     const cleanupUI = initUI()
@@ -49,5 +51,11 @@ export default (mod) => {
         cleanupUI()
         loopRunning = false
         console.log('[Anticlient] Cleaned up.')
+    }
+
+    return {
+        deactivate: () => {
+            window.anticlient.cleanup()
+        }
     }
 }
