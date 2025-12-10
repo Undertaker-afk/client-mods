@@ -26,10 +26,10 @@
         },
         {
             "name": "anticlient",
-            "version": "1.0.3",
+            "version": "1.0.4",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t \nLatest Change: Buttons in Settings"
+            "description": "Hacked client for 2b2t \nLatest Change: Packet Viewer"
         }
     ]
 }
