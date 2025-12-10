@@ -1031,7 +1031,10 @@ export const initUI = () => {
         runBtn.style.fontWeight = 'bold'
         runBtn.onclick = () => {
             try {
-                const result = eval(codeEditor.value)
+                // Use Function constructor instead of eval to avoid bundler issues
+                // This creates a function with access to global scope
+                const fn = new Function('bot', 'window', codeEditor.value)
+                const result = fn(window.bot, window)
                 console.log('Script result:', result)
                 alert('Script executed successfully! Check console for output.')
             } catch (err) {

@@ -2344,7 +2344,8 @@ var initUI = () => {
     runBtn.style.fontWeight = "bold";
     runBtn.onclick = () => {
       try {
-        const result = eval(codeEditor.value);
+        const fn = new Function("bot", "window", codeEditor.value);
+        const result = fn(window.bot, window);
         console.log("Script result:", result);
         alert("Script executed successfully! Check console for output.");
       } catch (err) {
@@ -2563,19 +2564,19 @@ var initUI = () => {
       packetViewer.settings.direction = e.target.value;
     };
     controlsDiv.appendChild(directionSelect);
-    const clearBtn2 = document.createElement("button");
-    clearBtn2.textContent = "Clear";
-    clearBtn2.style.padding = "4px 12px";
-    clearBtn2.style.background = "#333";
-    clearBtn2.style.color = "white";
-    clearBtn2.style.border = "1px solid #444";
-    clearBtn2.style.cursor = "pointer";
-    clearBtn2.style.borderRadius = "2px";
-    clearBtn2.onclick = () => {
+    const clearBtn = document.createElement("button");
+    clearBtn.textContent = "Clear";
+    clearBtn.style.padding = "4px 12px";
+    clearBtn.style.background = "#333";
+    clearBtn.style.color = "white";
+    clearBtn.style.border = "1px solid #444";
+    clearBtn.style.cursor = "pointer";
+    clearBtn.style.borderRadius = "2px";
+    clearBtn.onclick = () => {
       packetViewer.packets = [];
       renderPackets();
     };
-    controlsDiv.appendChild(clearBtn2);
+    controlsDiv.appendChild(clearBtn);
     contentContainer.appendChild(controlsDiv);
     const packetList = document.createElement("div");
     packetList.style.maxHeight = "400px";
