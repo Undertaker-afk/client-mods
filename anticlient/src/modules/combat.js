@@ -2,6 +2,7 @@
 import { Module, registerModule, modules } from '../core/Module.js'
 
 export const loadCombatModules = () => {
+    const logger = window.anticlientLogger?.module('Combat') || console
     // Store references for cross-module integration
     let criticalsModule = null
 
@@ -17,16 +18,8 @@ export const loadCombatModules = () => {
 
         const target = bot.nearestEntity(e => (e.type === 'player' || e.type === 'mob') && e.position.distanceTo(bot.entity.position) < attackRange && e !== bot.entity)
         if (target) {
-            // Check if criticals is enabled
-            if (criticalsModule && criticalsModule.enabled) {
-                // Jump for crit
-                if (bot.entity.onGround) {
-                    bot.entity.velocity.y = 0.42 * (criticalsModule.settings.jumpHeight || 1.0)
-                }
-            }
-            
             bot.lookAt(target.position.offset(0, target.height * 0.85, 0))
-            bot.attack(target)
+            bot.attack(target) // Criticals are now handled in the attack override
             killaura.lastAttack = now
         }
     }
@@ -78,14 +71,101 @@ export const loadCombatModules = () => {
     }
     registerModule(reach)
 
-    // -- Criticals (Working) --
+    // -- Criticals (Packet & Legit) --
     const criticals = new Module('criticals', 'Criticals', 'Combat', 'Deal critical hits', {
+        mode: 'Packet',
         jumpHeight: 1.0
+    }, {
+        mode: { type: 'dropdown', options: ['Legit', 'Packet'] }
     })
     criticalsModule = criticals
-    criticals.onTick = (bot) => {
-        // Logic integrated with killaura
+
+    // Store last attack time to trigger criticals
+    let lastCriticalAttack = 0
+
+    // Hook into bot attack to send critical packets
+    criticals.onEnable = (bot) => {
+        if (!bot._client) return
+
+        logger.info(`Criticals enabled - Mode: ${criticals.settings.mode}`)
+
+        // Store original attack function
+        if (!criticals._originalAttack) {
+            criticals._originalAttack = bot.attack.bind(bot)
+        }
+
+        // Override attack function
+        bot.attack = (entity) => {
+            if (criticals.enabled && criticals.settings.mode === 'Packet') {
+                // Send packet-based critical
+                logger.debug('Sending critical packets')
+                sendCriticalPackets(bot)
+            } else if (criticals.enabled && criticals.settings.mode === 'Legit') {
+                // Legit mode: jump if on ground
+                if (bot.entity.onGround) {
+                    logger.debug('Legit critical jump')
+                    bot.entity.velocity.y = 0.42 * criticals.settings.jumpHeight
+                }
+            }
+
+            // Call original attack
+            criticals._originalAttack(entity)
+        }
     }
+
+    criticals.onDisable = (bot) => {
+        logger.info('Criticals disabled')
+        // Restore original attack function
+        if (criticals._originalAttack) {
+            bot.attack = criticals._originalAttack
+        }
+    }
+
+    criticals.onSettingChanged = (key, newValue) => {
+        if (key === 'mode') {
+            logger.info(`Criticals mode changed to: ${newValue}`)
+        }
+    }
+
+    // Send critical hit packets (NCP bypass method)
+    const sendCriticalPackets = (bot) => {
+        if (!bot._client) return
+
+        const pos = bot.entity.position
+
+        // Method 1: Mini jump packets (most reliable)
+        // Send position packets that simulate a small jump
+        const offsets = [0.0625, 0.0, 0.0625, 0.0]
+
+        offsets.forEach(offset => {
+            bot._client.write('position', {
+                x: pos.x,
+                y: pos.y + offset,
+                z: pos.z,
+                onGround: false
+            })
+        })
+
+        // Alternative Method 2: Single jump packet (faster but less reliable)
+        // bot._client.write('position', {
+        //     x: pos.x,
+        //     y: pos.y + 0.1,
+        //     z: pos.z,
+        //     onGround: false
+        // })
+        // bot._client.write('position', {
+        //     x: pos.x,
+        //     y: pos.y,
+        //     z: pos.z,
+        //     onGround: true
+        // })
+    }
+
+    criticals.onTick = (bot) => {
+        // Legit mode logic is handled in killaura integration
+        // Packet mode is handled in attack override
+    }
+
     registerModule(criticals)
 
     // -- Velocity/Anti-Knockback (Enhanced) --

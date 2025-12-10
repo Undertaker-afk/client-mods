@@ -26,10 +26,10 @@
         },
         {
             "name": "anticlient",
-            "version": "1.4.0",
+            "version": "1.5.1",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t \nLatest: Advanced ESP (2D/3D, Chams, Glow, Health bars, Distance, Tight fit)"
+            "description": "Hacked client for 2b2t \nLatest: Fixed ESP rendering through walls, text always visible"
         }
     ]
 }

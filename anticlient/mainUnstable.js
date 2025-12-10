@@ -57,6 +57,7 @@ var registerModule = (module) => {
 
 // anticlient/src/modules/combat.js
 var loadCombatModules = () => {
+  const logger2 = window.anticlientLogger?.module("Combat") || console;
   let criticalsModule = null;
   const killaura = new Module("killaura", "Kill Aura", "Combat", "Automatically attacks entities around you", { range: 4.5, speed: 10 });
   killaura.onTick = (bot) => {
@@ -67,11 +68,6 @@ var loadCombatModules = () => {
     const attackRange = reachModule && reachModule.enabled ? reachModule.settings.reach : killaura.settings.range;
     const target = bot.nearestEntity((e) => (e.type === "player" || e.type === "mob") && e.position.distanceTo(bot.entity.position) < attackRange && e !== bot.entity);
     if (target) {
-      if (criticalsModule && criticalsModule.enabled) {
-        if (bot.entity.onGround) {
-          bot.entity.velocity.y = 0.42 * (criticalsModule.settings.jumpHeight || 1);
-        }
-      }
       bot.lookAt(target.position.offset(0, target.height * 0.85, 0));
       bot.attack(target);
       killaura.lastAttack = now;
@@ -111,9 +107,56 @@ var loadCombatModules = () => {
   };
   registerModule(reach);
   const criticals = new Module("criticals", "Criticals", "Combat", "Deal critical hits", {
+    mode: "Packet",
     jumpHeight: 1
+  }, {
+    mode: { type: "dropdown", options: ["Legit", "Packet"] }
   });
   criticalsModule = criticals;
+  let lastCriticalAttack = 0;
+  criticals.onEnable = (bot) => {
+    if (!bot._client) return;
+    logger2.info(`Criticals enabled - Mode: ${criticals.settings.mode}`);
+    if (!criticals._originalAttack) {
+      criticals._originalAttack = bot.attack.bind(bot);
+    }
+    bot.attack = (entity) => {
+      if (criticals.enabled && criticals.settings.mode === "Packet") {
+        logger2.debug("Sending critical packets");
+        sendCriticalPackets(bot);
+      } else if (criticals.enabled && criticals.settings.mode === "Legit") {
+        if (bot.entity.onGround) {
+          logger2.debug("Legit critical jump");
+          bot.entity.velocity.y = 0.42 * criticals.settings.jumpHeight;
+        }
+      }
+      criticals._originalAttack(entity);
+    };
+  };
+  criticals.onDisable = (bot) => {
+    logger2.info("Criticals disabled");
+    if (criticals._originalAttack) {
+      bot.attack = criticals._originalAttack;
+    }
+  };
+  criticals.onSettingChanged = (key, newValue) => {
+    if (key === "mode") {
+      logger2.info(`Criticals mode changed to: ${newValue}`);
+    }
+  };
+  const sendCriticalPackets = (bot) => {
+    if (!bot._client) return;
+    const pos = bot.entity.position;
+    const offsets = [0.0625, 0, 0.0625, 0];
+    offsets.forEach((offset) => {
+      bot._client.write("position", {
+        x: pos.x,
+        y: pos.y + offset,
+        z: pos.z,
+        onGround: false
+      });
+    });
+  };
   criticals.onTick = (bot) => {
   };
   registerModule(criticals);

@@ -30,9 +30,15 @@ export const worldReady = (world) => {
         context.fillText(text, 128, 40)
 
         const texture = new THREE.CanvasTexture(canvas)
-        const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false })
+        const spriteMaterial = new THREE.SpriteMaterial({
+            map: texture,
+            depthTest: false,
+            depthWrite: false,
+            sizeAttenuation: false
+        })
         const sprite = new THREE.Sprite(spriteMaterial)
         sprite.scale.set(2, 0.5, 1)
+        sprite.renderOrder = 999 // Render on top of everything
         return sprite
     }
 
@@ -78,15 +84,22 @@ export const worldReady = (world) => {
                             // 2D box (just front face)
                             const geometry = new THREE.PlaneGeometry(w, h)
                             const edges = new THREE.EdgesGeometry(geometry)
-                            box = new THREE.LineSegments(edges, material.clone())
+                            const boxMaterial = material.clone()
+                            boxMaterial.depthTest = false
+                            boxMaterial.depthWrite = false
+                            box = new THREE.LineSegments(edges, boxMaterial)
                         } else {
                             // 3D box
                             const geometry = new THREE.BoxGeometry(w, h, w)
                             const edges = new THREE.EdgesGeometry(geometry)
-                            box = new THREE.LineSegments(edges, material.clone())
+                            const boxMaterial = material.clone()
+                            boxMaterial.depthTest = false
+                            boxMaterial.depthWrite = false
+                            box = new THREE.LineSegments(edges, boxMaterial)
                         }
                         box.material.linewidth = settings.lineWidth || 2
                         box.frustumCulled = false
+                        box.renderOrder = 998 // Render on top
                         espGroup.add(box)
 
                         // Chams (filled box visible through walls)
@@ -97,10 +110,12 @@ export const worldReady = (world) => {
                                 color: parseColor(settings.chamsColor || '#ff00ff'),
                                 transparent: true,
                                 opacity: 0.3,
-                                depthTest: false
+                                depthTest: false,
+                                depthWrite: false
                             })
                             chams = new THREE.Mesh(chamsGeometry, chamsMaterial)
                             chams.frustumCulled = false
+                            chams.renderOrder = 997 // Behind box but above world
                             espGroup.add(chams)
                         }
 
@@ -112,10 +127,12 @@ export const worldReady = (world) => {
                                 color: color,
                                 transparent: true,
                                 opacity: 0.2,
-                                depthTest: false
+                                depthTest: false,
+                                depthWrite: false
                             })
                             glow = new THREE.Mesh(glowGeometry, glowMaterial)
                             glow.frustumCulled = false
+                            glow.renderOrder = 996 // Behind chams
                             espGroup.add(glow)
                         }
 
@@ -129,11 +146,14 @@ export const worldReady = (world) => {
                                 color: 0x00ff00,
                                 transparent: true,
                                 opacity: 0.8,
-                                depthTest: false
+                                depthTest: false,
+                                depthWrite: false,
+                                side: THREE.DoubleSide
                             })
                             healthBar = new THREE.Mesh(barGeometry, barMaterial)
                             healthBar.position.y = h / 2 + 0.3
                             healthBar.frustumCulled = false
+                            healthBar.renderOrder = 999 // On top with text
                             espGroup.add(healthBar)
                         }
 
@@ -186,6 +206,11 @@ export const worldReady = (world) => {
                         if (healthPercent > 0.6) espData.healthBar.material.color.setHex(0x00ff00)
                         else if (healthPercent > 0.3) espData.healthBar.material.color.setHex(0xffff00)
                         else espData.healthBar.material.color.setHex(0xff0000)
+
+                        // Make health bar face camera
+                        if (world.camera) {
+                            espData.healthBar.quaternion.copy(world.camera.quaternion)
+                        }
                     } else if (espData.healthBar) {
                         espData.healthBar.visible = false
                     }
@@ -224,8 +249,12 @@ export const worldReady = (world) => {
                     if (!tracerLines.has(id)) {
                         const points = [new THREE.Vector3(), new THREE.Vector3()]
                         const geometry = new THREE.BufferGeometry().setFromPoints(points)
-                        const line = new THREE.Line(geometry, tracerMaterial.clone())
+                        const tracerMat = tracerMaterial.clone()
+                        tracerMat.depthTest = false
+                        tracerMat.depthWrite = false
+                        const line = new THREE.Line(geometry, tracerMat)
                         line.frustumCulled = false
+                        line.renderOrder = 995 // Behind ESP elements
                         world.scene.add(line)
                         tracerLines.set(id, line)
                     }
@@ -275,8 +304,12 @@ export const worldReady = (world) => {
                 if (!storageMeshes.has(key)) {
                     const geometry = new THREE.BoxGeometry(1, 1, 1)
                     const edges = new THREE.EdgesGeometry(geometry)
-                    const line = new THREE.LineSegments(edges, storageMaterial.clone())
+                    const storageMat = storageMaterial.clone()
+                    storageMat.depthTest = false
+                    storageMat.depthWrite = false
+                    const line = new THREE.LineSegments(edges, storageMat)
                     line.frustumCulled = false
+                    line.renderOrder = 994 // Behind tracers
                     // Adjust position to be block center
                     line.position.set(vec.x + 0.5, vec.y + 0.5, vec.z + 0.5)
                     world.scene.add(line)
@@ -319,8 +352,12 @@ export const worldReady = (world) => {
                 if (!blockEspMeshes.has(key)) {
                     const geometry = new THREE.BoxGeometry(1, 1, 1)
                     const edges = new THREE.EdgesGeometry(geometry)
-                    const line = new THREE.LineSegments(edges, blockEspMaterial.clone())
+                    const blockMat = blockEspMaterial.clone()
+                    blockMat.depthTest = false
+                    blockMat.depthWrite = false
+                    const line = new THREE.LineSegments(edges, blockMat)
                     line.frustumCulled = false
+                    line.renderOrder = 993 // Behind storage ESP
                     // Adjust position to be block center
                     line.position.set(vec.x + 0.5, vec.y + 0.5, vec.z + 0.5)
                     world.scene.add(line)
@@ -357,10 +394,12 @@ export const worldReady = (world) => {
                     transparent: true,
                     opacity: 0.3,
                     depthTest: false,
+                    depthWrite: false,
                     side: THREE.DoubleSide
                 })
                 miningOverlay = new THREE.Mesh(geometry, overlayMaterial)
                 miningOverlay.frustumCulled = false
+                miningOverlay.renderOrder = 992 // Behind block ESP
                 world.scene.add(miningOverlay)
             }
 
@@ -387,11 +426,13 @@ export const worldReady = (world) => {
                 const wireMaterial = new THREE.LineBasicMaterial({
                     color: 0xffffff,
                     depthTest: false,
+                    depthWrite: false,
                     transparent: true,
                     opacity: 0.8
                 })
                 const wireframe = new THREE.LineSegments(edges, wireMaterial)
                 wireframe.frustumCulled = false
+                wireframe.renderOrder = 992 // Same as parent
                 miningOverlay.add(wireframe)
                 miningOverlay.wireframe = wireframe
             }
