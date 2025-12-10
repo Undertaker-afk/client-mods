@@ -34,10 +34,10 @@ export const worldReady = (world) => {
             map: texture,
             depthTest: false,
             depthWrite: false,
-            sizeAttenuation: true // Enable distance scaling
+            sizeAttenuation: false // Disable automatic scaling - we'll do it manually
         })
         const sprite = new THREE.Sprite(spriteMaterial)
-        sprite.scale.set(0.5, 0.125, 1) // Smaller base scale since it will scale with distance
+        sprite.scale.set(1, 0.25, 1) // Base scale - will be adjusted per distance
         sprite.renderOrder = 999 // Render on top of everything
         return sprite
     }
@@ -52,7 +52,8 @@ export const worldReady = (world) => {
         const pColor = parseColor(settings.playerColor)
         const mColor = parseColor(settings.mobColor)
 
-        const center = new THREE.Vector3(0, 0, -1).applyQuaternion(window.bot.entity.quaternion || new THREE.Quaternion()).add(window.bot.entity.position.offset(0, 1.62, 0))
+        // Calculate camera/eye position for tracers
+        const eyePos = window.bot.entity.position.offset(0, 1.62, 0)
 
         // Reuse loop for both ESP and Tracers
         const activeEsp = window.anticlient.visuals.esp
@@ -228,6 +229,14 @@ export const worldReady = (world) => {
                         context.fillText(`${distance.toFixed(1)}m`, 128, 40)
                         espData.distanceLabel.material.map.needsUpdate = true
 
+                        // Scale based on distance to maintain constant screen size (3-5% of screen height)
+                        // Formula: scale = distance * targetScreenPercentage * fov_factor
+                        const targetScreenPercent = 0.04 // 4% of screen height
+                        const fov = world.camera?.fov || 75
+                        const fovFactor = Math.tan((fov * Math.PI) / 360) // Convert FOV to radians and get tan
+                        const scale = distance * targetScreenPercent * fovFactor * 2
+                        espData.distanceLabel.scale.set(scale, scale * 0.25, 1)
+
                         // Make label face camera
                         if (world.camera) {
                             espData.distanceLabel.quaternion.copy(world.camera.quaternion)
@@ -261,13 +270,16 @@ export const worldReady = (world) => {
                     const line = tracerLines.get(id)
                     line.visible = true
 
-                    // Start from bot head
-                    const headPos = window.bot.entity.position.offset(0, 1.62, 0)
-
-                    // We need to update geometry positions
+                    // Update tracer line positions
                     const positions = line.geometry.attributes.position.array
-                    positions[0] = headPos.x; positions[1] = headPos.y; positions[2] = headPos.z
-                    positions[3] = pos.x; positions[4] = pos.y + 0.9; positions[5] = pos.z // to center of body
+                    // Start from player's eye position
+                    positions[0] = eyePos.x
+                    positions[1] = eyePos.y
+                    positions[2] = eyePos.z
+                    // End at entity's center (chest height)
+                    positions[3] = pos.x
+                    positions[4] = pos.y + 0.9
+                    positions[5] = pos.z
                     line.geometry.attributes.position.needsUpdate = true
 
                     line.material.color.setHex(color)
