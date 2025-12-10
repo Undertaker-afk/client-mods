@@ -6,9 +6,23 @@ export class Module {
         this.category = category
         this.description = description
         this.enabled = false
-        this.settings = defaultSettings
         this.bind = null
         this.uiElement = null
+
+        // Wrap settings in a Proxy to detect changes
+        this.settings = new Proxy(defaultSettings, {
+            set: (target, prop, value) => {
+                const oldValue = target[prop]
+                target[prop] = value
+
+                // Call onSettingChanged if it exists and value actually changed
+                if (oldValue !== value && this.onSettingChanged) {
+                    this.onSettingChanged(prop, value, oldValue)
+                }
+
+                return true
+            }
+        })
     }
 
     toggle() {
@@ -23,6 +37,7 @@ export class Module {
     onToggle(enabled) { }
     onTick(bot) { }
     onRender(bot) { }
+    onSettingChanged(key, newValue, oldValue) { }
 }
 
 export const categories = {

@@ -37,17 +37,13 @@ export default (mod) => {
     loggerSettings.enabled = true
     loggerSettings.onToggle = () => {}
     loggerSettings.onTick = () => {}
-    registerModule(loggerSettings)
-
-    // Watch for log level changes
-    let lastLogLevel = loggerSettings.settings.logLevel
-    setInterval(() => {
-        if (loggerSettings.settings.logLevel !== lastLogLevel) {
-            lastLogLevel = loggerSettings.settings.logLevel
-            logger.setLevel(lastLogLevel)
-            logger.info(`Log level changed to ${lastLogLevel}`)
+    loggerSettings.onSettingChanged = (key, newValue) => {
+        if (key === 'logLevel') {
+            logger.setLevel(newValue)
+            logger.info(`Log level changed to ${newValue}`)
         }
-    }, 100)
+    }
+    registerModule(loggerSettings)
 
     logger.info(`Modules loaded. Total: ${Object.keys(modules).length}`)
 

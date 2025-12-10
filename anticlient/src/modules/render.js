@@ -19,14 +19,11 @@ export const loadRenderModules = () => {
         window.anticlient.visuals.esp = enabled
         window.anticlient.visuals.espSettings = esp.settings
     }
-    // Update settings live
-    esp.settings = new Proxy(esp.settings, {
-        set: (target, prop, value) => {
-            target[prop] = value
-            if (window.anticlient?.visuals) window.anticlient.visuals.espSettings = target
-            return true
+    esp.onSettingChanged = (key, newValue) => {
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.espSettings = esp.settings
         }
-    })
+    }
     registerModule(esp)
 
     // -- Tracers (Enhanced) --
@@ -41,13 +38,11 @@ export const loadRenderModules = () => {
         window.anticlient.visuals.tracers = enabled
         window.anticlient.visuals.tracersSettings = tracers.settings
     }
-    tracers.settings = new Proxy(tracers.settings, {
-        set: (target, prop, value) => {
-            target[prop] = value
-            if (window.anticlient?.visuals) window.anticlient.visuals.tracersSettings = target
-            return true
+    tracers.onSettingChanged = () => {
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.tracersSettings = tracers.settings
         }
-    })
+    }
     registerModule(tracers)
 
     // -- NameTags --
@@ -62,13 +57,11 @@ export const loadRenderModules = () => {
         window.anticlient.visuals.nameTags = enabled
         window.anticlient.visuals.nameTagsSettings = nameTags.settings
     }
-    nameTags.settings = new Proxy(nameTags.settings, {
-        set: (target, prop, value) => {
-            target[prop] = value
-            if (window.anticlient?.visuals) window.anticlient.visuals.nameTagsSettings = target
-            return true
+    nameTags.onSettingChanged = () => {
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.nameTagsSettings = nameTags.settings
         }
-    })
+    }
     registerModule(nameTags)
 
     // -- Block ESP/X-Ray --
@@ -124,13 +117,11 @@ export const loadRenderModules = () => {
             blockEsp.lastScan = Date.now()
         }
     }
-    blockEsp.settings = new Proxy(blockEsp.settings, {
-        set: (target, prop, value) => {
-            target[prop] = value
-            if (window.anticlient?.visuals) window.anticlient.visuals.blockEspSettings = target
-            return true
+    blockEsp.onSettingChanged = () => {
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.blockEspSettings = blockEsp.settings
         }
-    })
+    }
     registerModule(blockEsp)
 
     // -- Storage ESP --
@@ -140,6 +131,11 @@ export const loadRenderModules = () => {
         if (!window.anticlient?.visuals) return
         window.anticlient.visuals.storageEsp = enabled
         window.anticlient.visuals.storageEspSettings = storageEsp.settings
+    }
+    storageEsp.onSettingChanged = () => {
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.storageEspSettings = storageEsp.settings
+        }
     }
     storageEsp.onTick = (bot) => {
         if (!bot || !bot.entity || !bot.entity.position || !bot.findBlocks) return

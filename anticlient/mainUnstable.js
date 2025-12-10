@@ -6,9 +6,18 @@ var Module = class {
     this.category = category;
     this.description = description;
     this.enabled = false;
-    this.settings = defaultSettings;
     this.bind = null;
     this.uiElement = null;
+    this.settings = new Proxy(defaultSettings, {
+      set: (target, prop, value) => {
+        const oldValue = target[prop];
+        target[prop] = value;
+        if (oldValue !== value && this.onSettingChanged) {
+          this.onSettingChanged(prop, value, oldValue);
+        }
+        return true;
+      }
+    });
   }
   toggle() {
     this.enabled = !this.enabled;
@@ -23,6 +32,8 @@ var Module = class {
   onTick(bot) {
   }
   onRender(bot) {
+  }
+  onSettingChanged(key, newValue, oldValue) {
   }
 };
 var categories = {
@@ -344,6 +355,13 @@ var loadMovementModules = () => {
       }
     }
   };
+  step.onSettingChanged = (key, newValue) => {
+    const log = window.anticlientLogger?.module("Step");
+    if (key === "height" && step.enabled && window.bot?.physics) {
+      window.bot.physics.stepHeight = newValue;
+      if (log) log.info(`Step height changed to ${newValue} blocks`);
+    }
+  };
   step.onTick = (bot) => {
     if (bot.physics && bot.physics.stepHeight !== step.settings.height) {
       bot.physics.stepHeight = step.settings.height;
@@ -584,13 +602,11 @@ var loadRenderModules = () => {
     window.anticlient.visuals.esp = enabled;
     window.anticlient.visuals.espSettings = esp.settings;
   };
-  esp.settings = new Proxy(esp.settings, {
-    set: (target, prop, value) => {
-      target[prop] = value;
-      if (window.anticlient?.visuals) window.anticlient.visuals.espSettings = target;
-      return true;
+  esp.onSettingChanged = (key, newValue) => {
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.espSettings = esp.settings;
     }
-  });
+  };
   registerModule(esp);
   const tracers = new Module("tracers", "Tracers", "Render", "Draw lines to entities", {
     color: "#ffffff",
@@ -603,13 +619,11 @@ var loadRenderModules = () => {
     window.anticlient.visuals.tracers = enabled;
     window.anticlient.visuals.tracersSettings = tracers.settings;
   };
-  tracers.settings = new Proxy(tracers.settings, {
-    set: (target, prop, value) => {
-      target[prop] = value;
-      if (window.anticlient?.visuals) window.anticlient.visuals.tracersSettings = target;
-      return true;
+  tracers.onSettingChanged = () => {
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.tracersSettings = tracers.settings;
     }
-  });
+  };
   registerModule(tracers);
   const nameTags = new Module("nametags", "NameTags", "Render", "Show entity names above heads", {
     range: 64,
@@ -622,13 +636,11 @@ var loadRenderModules = () => {
     window.anticlient.visuals.nameTags = enabled;
     window.anticlient.visuals.nameTagsSettings = nameTags.settings;
   };
-  nameTags.settings = new Proxy(nameTags.settings, {
-    set: (target, prop, value) => {
-      target[prop] = value;
-      if (window.anticlient?.visuals) window.anticlient.visuals.nameTagsSettings = target;
-      return true;
+  nameTags.onSettingChanged = () => {
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.nameTagsSettings = nameTags.settings;
     }
-  });
+  };
   registerModule(nameTags);
   const blockEsp = new Module("blockesp", "Block ESP", "Render", "Highlight blocks through walls", {
     blocks: ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore", "ancient_debris"],
@@ -672,13 +684,11 @@ var loadRenderModules = () => {
       blockEsp.lastScan = Date.now();
     }
   };
-  blockEsp.settings = new Proxy(blockEsp.settings, {
-    set: (target, prop, value) => {
-      target[prop] = value;
-      if (window.anticlient?.visuals) window.anticlient.visuals.blockEspSettings = target;
-      return true;
+  blockEsp.onSettingChanged = () => {
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.blockEspSettings = blockEsp.settings;
     }
-  });
+  };
   registerModule(blockEsp);
   const storageEsp = new Module("storageesp", "Storage ESP", "Render", "See chests and containers", { color: "#FFA500" });
   storageEsp.lastScan = 0;
@@ -686,6 +696,11 @@ var loadRenderModules = () => {
     if (!window.anticlient?.visuals) return;
     window.anticlient.visuals.storageEsp = enabled;
     window.anticlient.visuals.storageEspSettings = storageEsp.settings;
+  };
+  storageEsp.onSettingChanged = () => {
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.storageEspSettings = storageEsp.settings;
+    }
   };
   storageEsp.onTick = (bot) => {
     if (!bot || !bot.entity || !bot.entity.position || !bot.findBlocks) return;
@@ -2430,15 +2445,13 @@ var entry_default = (mod) => {
   };
   loggerSettings.onTick = () => {
   };
-  registerModule(loggerSettings);
-  let lastLogLevel = loggerSettings.settings.logLevel;
-  setInterval(() => {
-    if (loggerSettings.settings.logLevel !== lastLogLevel) {
-      lastLogLevel = loggerSettings.settings.logLevel;
-      logger.setLevel(lastLogLevel);
-      logger.info(`Log level changed to ${lastLogLevel}`);
+  loggerSettings.onSettingChanged = (key, newValue) => {
+    if (key === "logLevel") {
+      logger.setLevel(newValue);
+      logger.info(`Log level changed to ${newValue}`);
     }
-  }, 100);
+  };
+  registerModule(loggerSettings);
   logger.info(`Modules loaded. Total: ${Object.keys(modules).length}`);
   const cleanupUI = initUI();
   let bot = void 0;

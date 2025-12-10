@@ -132,6 +132,13 @@ export const loadMovementModules = () => {
             }
         }
     }
+    step.onSettingChanged = (key, newValue) => {
+        const log = window.anticlientLogger?.module('Step')
+        if (key === 'height' && step.enabled && window.bot?.physics) {
+            window.bot.physics.stepHeight = newValue
+            if (log) log.info(`Step height changed to ${newValue} blocks`)
+        }
+    }
     step.onTick = (bot) => {
         // Ensure step height is maintained
         if (bot.physics && bot.physics.stepHeight !== step.settings.height) {

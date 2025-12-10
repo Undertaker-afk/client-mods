@@ -26,10 +26,10 @@
         },
         {
             "name": "anticlient",
-            "version": "1.2.0",
+            "version": "1.2.1",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t \nLatest: Improved ESP/Tracers, Fixed Step, Blink Backtrack with UI, Logging System"
+            "description": "Hacked client for 2b2t \nLatest: Auto-updating settings, Improved ESP/Tracers, Blink Backtrack UI"
         }
     ]
 }
