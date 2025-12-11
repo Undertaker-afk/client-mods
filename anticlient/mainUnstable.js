@@ -45,6 +45,7 @@ var categories = {
   "World": [],
   "Settings": [],
   "Packets": [],
+  "Network": [],
   "Scripting": []
 };
 var modules = {};
@@ -1368,8 +1369,120 @@ var loadWorldModules = () => {
   registerModule(autoMine);
 };
 
+// anticlient/src/modules/network.js
+var loadNetworkModules = () => {
+  const wireless = new Module("wireless", "Wireless Integration", "Network", "Connect to desktop bridge", {
+    enabled: false,
+    host: "localhost",
+    port: 8080,
+    autoConnect: true,
+    shareInventory: true,
+    shareViewport: true
+  });
+  let ws = null;
+  let reconnectInterval = null;
+  let updateInterval = null;
+  wireless.onToggle = (enabled) => {
+    if (enabled) {
+      connect();
+      if (wireless.settings.autoConnect && !reconnectInterval) {
+        reconnectInterval = setInterval(() => {
+          if (!ws || ws.readyState === WebSocket.CLOSED) {
+            connect();
+          }
+        }, 5e3);
+      }
+      if (!updateInterval) {
+        updateInterval = setInterval(sendUpdate, 100);
+      }
+    } else {
+      disconnect();
+      if (reconnectInterval) {
+        clearInterval(reconnectInterval);
+        reconnectInterval = null;
+      }
+      if (updateInterval) {
+        clearInterval(updateInterval);
+        updateInterval = null;
+      }
+    }
+  };
+  const connect = () => {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    const url = `ws://${wireless.settings.host}:${wireless.settings.port}`;
+    console.log(`[Wireless] Connecting to ${url}...`);
+    try {
+      ws = new WebSocket(url);
+      ws.onopen = () => {
+        console.log("[Wireless] Connected");
+        ws.send(JSON.stringify({
+          type: "handshake",
+          client: "mcraft-anticlient",
+          version: "1.0.0"
+        }));
+      };
+      ws.onclose = () => {
+        console.log("[Wireless] Disconnected");
+        ws = null;
+      };
+      ws.onerror = (err) => {
+        console.error("[Wireless] Error:", err);
+      };
+      ws.onmessage = (msg) => {
+        try {
+          const data = JSON.parse(msg.data);
+          handleMessage(data);
+        } catch (e) {
+          console.error("[Wireless] Failed to parse message:", e);
+        }
+      };
+    } catch (e) {
+      console.error("[Wireless] Connection failed:", e);
+    }
+  };
+  const disconnect = () => {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+  };
+  const sendUpdate = () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN || !window.bot) return;
+    const update = {
+      type: "update",
+      timestamp: Date.now()
+    };
+    if (wireless.settings.shareInventory) {
+      update.inventory = window.bot.inventory.items().map((item) => ({
+        name: item.name,
+        count: item.count,
+        slot: item.slot
+      }));
+    }
+    if (wireless.settings.shareViewport) {
+      update.position = window.bot.entity.position;
+      update.yaw = window.bot.entity.yaw;
+      update.pitch = window.bot.entity.pitch;
+      update.health = window.bot.health;
+      update.food = window.bot.food;
+    }
+    ws.send(JSON.stringify(update));
+  };
+  const handleMessage = (data) => {
+    if (data.type === "command") {
+      if (data.command === "chat") {
+        window.bot.chat(data.message);
+      } else if (data.command === "move") {
+        window.bot.setControlState(data.control, data.state);
+      }
+    }
+  };
+  registerModule(wireless);
+};
+
 // anticlient/src/modules/client.js
 var loadClientModules = () => {
+  loadNetworkModules();
   const settings = new Module("client_settings", "Client Settings", "Settings", "Client configuration", {
     theme: "Default",
     repo: "Undertaker-afk/client-mods"

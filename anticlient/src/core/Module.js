@@ -49,6 +49,7 @@ export const categories = {
     'World': [],
     'Settings': [],
     'Packets': [],
+    'Network': [],
     'Scripting': []
 }
 
