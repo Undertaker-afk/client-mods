@@ -91,30 +91,36 @@ export const loadNetworkModules = () => {
     }
 
     const sendUpdate = () => {
-        if (!ws || ws.readyState !== WebSocket.OPEN || !window.bot) return
+        // Safety checks for bot existence and validity
+        if (!ws || ws.readyState !== WebSocket.OPEN) return
+        if (!window.bot || !window.bot.entity) return
 
-        const update = {
-            type: 'update',
-            timestamp: Date.now()
+        try {
+            const update = {
+                type: 'update',
+                timestamp: Date.now()
+            }
+
+            if (wireless.settings.shareInventory && window.bot.inventory) {
+                update.inventory = window.bot.inventory.items().map(item => ({
+                    name: item.name,
+                    count: item.count,
+                    slot: item.slot
+                }))
+            }
+
+            if (wireless.settings.shareViewport && window.bot.entity && window.bot.entity.position) {
+                update.position = window.bot.entity.position
+                update.yaw = window.bot.entity.yaw
+                update.pitch = window.bot.entity.pitch
+                update.health = window.bot.health
+                update.food = window.bot.food
+            }
+
+            ws.send(JSON.stringify(update))
+        } catch (e) {
+            // Silently fail if bot state is invalid
         }
-
-        if (wireless.settings.shareInventory) {
-            update.inventory = window.bot.inventory.items().map(item => ({
-                name: item.name,
-                count: item.count,
-                slot: item.slot
-            }))
-        }
-
-        if (wireless.settings.shareViewport) {
-            update.position = window.bot.entity.position
-            update.yaw = window.bot.entity.yaw
-            update.pitch = window.bot.entity.pitch
-            update.health = window.bot.health
-            update.food = window.bot.food
-        }
-
-        ws.send(JSON.stringify(update))
     }
 
     const handleMessage = (data) => {
@@ -124,6 +130,25 @@ export const loadNetworkModules = () => {
                 window.bot.chat(data.message)
             } else if (data.command === 'move') {
                 window.bot.setControlState(data.control, data.state)
+            } else if (data.command === 'inventory_click') {
+                // Basic inventory interaction - toggles holding an item or drops it
+                // This is a simplification. Full inventory management is complex.
+                // data.slot: slot number to click
+                // data.type: 0 for left click, 1 for right click
+                if (window.bot.inventory) {
+                    try {
+                        window.bot.simpleClick.leftClick(data.slot).catch(err => console.error(err))
+                    } catch (e) { console.error(e) }
+                }
+            } else if (data.command === 'drop_slot') {
+                 if (window.bot.inventory) {
+                    // This requires a more complex interaction sequence usually
+                    // For now, let's just try to toss the item if we can select it
+                    const item = window.bot.inventory.slots[data.slot]
+                    if (item) {
+                        window.bot.tossStack(item).catch(err => console.error(err))
+                    }
+                }
             }
         }
     }

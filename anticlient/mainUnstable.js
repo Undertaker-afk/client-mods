@@ -1,4 +1,4 @@
-// anticlient/src/core/Module.js
+// src/core/Module.js
 var Module = class {
   constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
     this.id = id;
@@ -56,7 +56,7 @@ var registerModule = (module) => {
   return module;
 };
 
-// anticlient/src/modules/combat.js
+// src/modules/combat.js
 var loadCombatModules = () => {
   const logger2 = window.anticlientLogger?.module("Combat") || console;
   let criticalsModule = null;
@@ -287,7 +287,7 @@ var loadCombatModules = () => {
   registerModule(autoArmor);
 };
 
-// anticlient/src/modules/movement.js
+// src/modules/movement.js
 var loadMovementModules = () => {
   const flight = new Module("flight", "Flight", "Movement", "Allows you to fly like in creative mode", {
     speed: 1,
@@ -798,7 +798,7 @@ var loadMovementModules = () => {
   registerModule(portalGUI);
 };
 
-// anticlient/src/modules/render.js
+// src/modules/render.js
 var loadRenderModules = () => {
   const fullbright = new Module("fullbright", "Fullbright", "Render", "See in the dark", { gamma: 1 });
   registerModule(fullbright);
@@ -946,7 +946,7 @@ var loadRenderModules = () => {
   registerModule(storageEsp);
 };
 
-// anticlient/src/modules/player.js
+// src/modules/player.js
 var loadPlayerModules = () => {
   const autoEat = new Module("autoeat", "Auto Eat", "Player", "Automatically eats food when hungry", {
     healthThreshold: 16,
@@ -1250,7 +1250,7 @@ var loadPlayerModules = () => {
   registerModule(packetMine);
 };
 
-// anticlient/src/modules/world.js
+// src/modules/world.js
 var loadWorldModules = () => {
   const nuker = new Module("nuker", "Nuker", "World", "Break blocks around you", {
     range: 4,
@@ -1369,7 +1369,7 @@ var loadWorldModules = () => {
   registerModule(autoMine);
 };
 
-// anticlient/src/modules/network.js
+// src/modules/network.js
 var loadNetworkModules = () => {
   const wireless = new Module("wireless", "Wireless Integration", "Network", "Connect to desktop bridge", {
     enabled: false,
@@ -1447,26 +1447,30 @@ var loadNetworkModules = () => {
     }
   };
   const sendUpdate = () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN || !window.bot) return;
-    const update = {
-      type: "update",
-      timestamp: Date.now()
-    };
-    if (wireless.settings.shareInventory) {
-      update.inventory = window.bot.inventory.items().map((item) => ({
-        name: item.name,
-        count: item.count,
-        slot: item.slot
-      }));
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!window.bot || !window.bot.entity) return;
+    try {
+      const update = {
+        type: "update",
+        timestamp: Date.now()
+      };
+      if (wireless.settings.shareInventory && window.bot.inventory) {
+        update.inventory = window.bot.inventory.items().map((item) => ({
+          name: item.name,
+          count: item.count,
+          slot: item.slot
+        }));
+      }
+      if (wireless.settings.shareViewport && window.bot.entity && window.bot.entity.position) {
+        update.position = window.bot.entity.position;
+        update.yaw = window.bot.entity.yaw;
+        update.pitch = window.bot.entity.pitch;
+        update.health = window.bot.health;
+        update.food = window.bot.food;
+      }
+      ws.send(JSON.stringify(update));
+    } catch (e) {
     }
-    if (wireless.settings.shareViewport) {
-      update.position = window.bot.entity.position;
-      update.yaw = window.bot.entity.yaw;
-      update.pitch = window.bot.entity.pitch;
-      update.health = window.bot.health;
-      update.food = window.bot.food;
-    }
-    ws.send(JSON.stringify(update));
   };
   const handleMessage = (data) => {
     if (data.type === "command") {
@@ -1474,13 +1478,28 @@ var loadNetworkModules = () => {
         window.bot.chat(data.message);
       } else if (data.command === "move") {
         window.bot.setControlState(data.control, data.state);
+      } else if (data.command === "inventory_click") {
+        if (window.bot.inventory) {
+          try {
+            window.bot.simpleClick.leftClick(data.slot).catch((err) => console.error(err));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      } else if (data.command === "drop_slot") {
+        if (window.bot.inventory) {
+          const item = window.bot.inventory.slots[data.slot];
+          if (item) {
+            window.bot.tossStack(item).catch((err) => console.error(err));
+          }
+        }
       }
     }
   };
   registerModule(wireless);
 };
 
-// anticlient/src/modules/client.js
+// src/modules/client.js
 var loadClientModules = () => {
   loadNetworkModules();
   const settings = new Module("client_settings", "Client Settings", "Settings", "Client configuration", {
@@ -1553,7 +1572,7 @@ var loadClientModules = () => {
   registerModule(settings);
 };
 
-// anticlient/src/modules/packets.js
+// src/modules/packets.js
 var loadPacketsModules = () => {
   const packetViewer = new Module("packetviewer", "Packet Viewer", "Packets", "View all Minecraft network packets", {
     enabled: false,
@@ -1835,7 +1854,7 @@ var loadPacketsModules = () => {
   registerModule(fakeLag);
 };
 
-// anticlient/src/ui/index.js
+// src/ui/index.js
 var initUI = () => {
   const existingRoot = document.getElementById("anticlient-root");
   if (existingRoot) existingRoot.remove();
@@ -3514,7 +3533,7 @@ var initUI = () => {
   };
 };
 
-// anticlient/src/logger.js
+// src/logger.js
 var LogLevel = {
   DEBUG: 0,
   INFO: 1,
@@ -3576,7 +3595,7 @@ if (typeof window !== "undefined") {
   window.anticlientLogger = logger;
 }
 
-// anticlient/entry.js
+// entry.js
 var entry_default = (mod) => {
   if (window.anticlient && window.anticlient.cleanup) {
     try {
@@ -3593,6 +3612,7 @@ var entry_default = (mod) => {
   loadWorldModules();
   loadClientModules();
   loadPacketsModules();
+  loadNetworkModules();
   const loggerSettings = new Module(
     "loggersettings",
     "Logger Settings",
