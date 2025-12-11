@@ -2604,6 +2604,9 @@ var initUI = () => {
       settingsDiv.className = "ac-module-settings";
       Object.keys(mod.settings).forEach((key) => {
         const val = mod.settings[key];
+        if (key === "enabled") {
+          return;
+        }
         if (key === "blocks" && Array.isArray(val)) {
           return;
         }

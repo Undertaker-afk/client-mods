@@ -720,6 +720,11 @@ export const initUI = () => {
             Object.keys(mod.settings).forEach(key => {
                 const val = mod.settings[key]
 
+                // Skip rendering 'enabled' setting - it's controlled by clicking the module header
+                if (key === 'enabled') {
+                    return
+                }
+
                 // Skip rendering blocks array directly - we'll add a button for it
                 if (key === 'blocks' && Array.isArray(val)) {
                     return
