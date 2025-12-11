@@ -2022,7 +2022,7 @@ var initUI = () => {
   const toggleUi = () => {
     const isOpening = uiRoot.style.display === "none";
     uiRoot.style.display = isOpening ? "block" : "none";
-    if (window.activeModalStack) {
+    if (window.activeModalStack && Array.isArray(window.activeModalStack)) {
       if (isOpening) {
         const modalObject = {
           reactType: "AnticlientMenu",
@@ -2030,11 +2030,9 @@ var initUI = () => {
         };
         window.activeModalStack.push(modalObject);
       } else {
-        const index = window.activeModalStack.findIndex(
-          (modal) => modal && modal.id === "anticlient-menu"
-        );
-        if (index > -1) {
-          window.activeModalStack.splice(index, 1);
+        const lastModal = window.activeModalStack[window.activeModalStack.length - 1];
+        if (lastModal && lastModal.id === "anticlient-menu") {
+          window.activeModalStack.pop();
         }
       }
     }
