@@ -1408,25 +1408,28 @@ var loadNetworkModules = () => {
     }
   };
   const connect = () => {
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      console.log("[Wireless] Already connected or connecting, skipping...");
+      return;
+    }
     const url = `ws://${wireless.settings.host}:${wireless.settings.port}`;
     console.log(`[Wireless] Connecting to ${url}...`);
     try {
       ws = new WebSocket(url);
       ws.onopen = () => {
-        console.log("[Wireless] Connected");
+        console.log("[Wireless] \u2713 Connected to Desktop Bridge");
         ws.send(JSON.stringify({
           type: "handshake",
           client: "mcraft-anticlient",
           version: "1.0.0"
         }));
       };
-      ws.onclose = () => {
-        console.log("[Wireless] Disconnected");
+      ws.onclose = (event) => {
+        console.log("[Wireless] \u2717 Disconnected", event.code, event.reason);
         ws = null;
       };
       ws.onerror = (err) => {
-        console.error("[Wireless] Error:", err);
+        console.error("[Wireless] \u2717 WebSocket Error:", err);
       };
       ws.onmessage = (msg) => {
         try {
@@ -1468,8 +1471,11 @@ var loadNetworkModules = () => {
         update.health = window.bot.health;
         update.food = window.bot.food;
       }
-      ws.send(JSON.stringify(update));
+      if (update.position || update.inventory) {
+        ws.send(JSON.stringify(update));
+      }
     } catch (e) {
+      console.error("[Wireless] Error sending update:", e);
     }
   };
   const handleMessage = (data) => {

@@ -43,7 +43,10 @@ export const loadNetworkModules = () => {
     }
 
     const connect = () => {
-        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+            console.log('[Wireless] Already connected or connecting, skipping...')
+            return
+        }
 
         const url = `ws://${wireless.settings.host}:${wireless.settings.port}`
         console.log(`[Wireless] Connecting to ${url}...`)
@@ -52,7 +55,7 @@ export const loadNetworkModules = () => {
             ws = new WebSocket(url)
 
             ws.onopen = () => {
-                console.log('[Wireless] Connected')
+                console.log('[Wireless] ✓ Connected to Desktop Bridge')
                 // Send initial handshake
                 ws.send(JSON.stringify({
                     type: 'handshake',
@@ -61,13 +64,14 @@ export const loadNetworkModules = () => {
                 }))
             }
 
-            ws.onclose = () => {
-                console.log('[Wireless] Disconnected')
+            ws.onclose = (event) => {
+                console.log('[Wireless] ✗ Disconnected', event.code, event.reason)
                 ws = null
             }
 
             ws.onerror = (err) => {
-                console.error('[Wireless] Error:', err)
+                console.error('[Wireless] ✗ WebSocket Error:', err)
+                // Don't set ws to null here, onclose will handle it
             }
 
             ws.onmessage = (msg) => {
@@ -117,9 +121,12 @@ export const loadNetworkModules = () => {
                 update.food = window.bot.food
             }
 
-            ws.send(JSON.stringify(update))
+            // Only send if we have meaningful data
+            if (update.position || update.inventory) {
+                ws.send(JSON.stringify(update))
+            }
         } catch (e) {
-            // Silently fail if bot state is invalid
+            console.error('[Wireless] Error sending update:', e)
         }
     }
 
