@@ -1600,38 +1600,190 @@ var loadWorldModules = () => {
   fastBreak.onTick = (bot) => {
   };
   registerModule(fastBreak);
-  const xray = new Module("xray", "X-Ray", "World", "Highlight ores and valuable blocks", {
+  const xray = new Module("xray", "X-Ray", "World", "See through walls and highlight ores", {
+    mode: "highlight",
+    // highlight, seethrough
+    seeThroughMode: "glass",
+    // glass, opacity
     blocks: ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore", "ancient_debris", "nether_gold_ore"],
+    hideBlocks: ["stone", "deepslate", "netherrack", "dirt", "grass_block"],
+    // Blocks to hide in seethrough mode
     color: "#00ff00",
-    range: 32
+    range: 32,
+    opacity: 0.3
+    // For opacity mode
+  }, {
+    mode: { type: "dropdown", options: ["highlight", "seethrough"] },
+    seeThroughMode: { type: "dropdown", options: ["glass", "opacity"] }
   });
   xray.lastScan = 0;
+  let worldViewPatched = false;
+  let originalLoadChunk = null;
+  let originalSetBlockStateId = null;
+  let originalWorldSetBlockStateId = null;
+  function getBlockStateIds(blockName) {
+    const mcData = globalThis.mcData || globalThis.loadedData || window?.mcData;
+    const block = mcData?.blocksByName?.[blockName];
+    if (!block) return [];
+    const stateIds = [];
+    if (block.minStateId !== void 0 && block.maxStateId !== void 0) {
+      for (let id = block.minStateId; id <= block.maxStateId; id++) {
+        stateIds.push(id);
+      }
+    } else if (block.defaultState !== void 0) {
+      stateIds.push(block.defaultState);
+    }
+    return stateIds;
+  }
+  function replaceBlocksInChunk(column, blocksToHide, replacementStateId) {
+    if (!column || !replacementStateId) return;
+    const minY = column.minY ?? 0;
+    const worldHeight = column.worldHeight ?? 256;
+    const Vec3 = globalThis.Vec3;
+    for (let x = 0; x < 16; x++) {
+      for (let z = 0; z < 16; z++) {
+        for (let y = minY; y < worldHeight; y++) {
+          const pos = new Vec3(x, y, z);
+          try {
+            const stateId = column.getBlockStateId(pos);
+            if (blocksToHide.includes(stateId)) {
+              column.setBlockStateId(pos, replacementStateId);
+            }
+          } catch (e) {
+          }
+        }
+      }
+    }
+  }
+  function patchWorldView() {
+    const worldView = globalThis.worldView || window?.worldView;
+    if (!worldView || worldViewPatched) return;
+    const Vec3 = globalThis.Vec3;
+    const mcData = globalThis.mcData || globalThis.loadedData || window?.mcData;
+    if (!mcData) return;
+    const glassStateId = mcData.blocksByName?.["glass"]?.defaultState;
+    if (worldView.world && worldView.world.setBlockStateId && !originalWorldSetBlockStateId) {
+      originalWorldSetBlockStateId = worldView.world.setBlockStateId.bind(worldView.world);
+      worldView.world.setBlockStateId = function(pos, stateId) {
+        if (xray.enabled && xray.settings.mode === "seethrough" && xray.settings.seeThroughMode === "glass") {
+          const hideIds = xray.settings.hideBlocks.flatMap((name) => getBlockStateIds(name));
+          if (hideIds.includes(stateId) && glassStateId) {
+            stateId = glassStateId;
+          }
+        }
+        return originalWorldSetBlockStateId(pos, stateId);
+      };
+    }
+    if (worldView.loadChunk && !originalLoadChunk) {
+      originalLoadChunk = worldView.loadChunk.bind(worldView);
+      worldView.loadChunk = async function(pos, isLightUpdate, reason) {
+        if (xray.enabled && xray.settings.mode === "seethrough" && xray.settings.seeThroughMode === "glass") {
+          const column = await this.world.getColumnAt(pos.y !== void 0 ? pos : new Vec3(pos.x, 0, pos.z));
+          if (column && glassStateId) {
+            const hideIds = xray.settings.hideBlocks.flatMap((name) => getBlockStateIds(name));
+            replaceBlocksInChunk(column, hideIds, glassStateId);
+          }
+        }
+        return originalLoadChunk(pos, isLightUpdate, reason);
+      };
+    }
+    if (worldView.setBlockStateId && !originalSetBlockStateId) {
+      originalSetBlockStateId = worldView.setBlockStateId.bind(worldView);
+      worldView.setBlockStateId = function(position, stateId) {
+        if (xray.enabled && xray.settings.mode === "seethrough" && xray.settings.seeThroughMode === "glass") {
+          const hideIds = xray.settings.hideBlocks.flatMap((name) => getBlockStateIds(name));
+          if (hideIds.includes(stateId) && glassStateId) {
+            stateId = glassStateId;
+          }
+        }
+        return originalSetBlockStateId(position, stateId);
+      };
+    }
+    worldViewPatched = true;
+  }
+  function unpatchWorldView() {
+    const worldView = globalThis.worldView || window?.worldView;
+    if (!worldView || !worldViewPatched) return;
+    if (originalWorldSetBlockStateId && worldView.world) {
+      worldView.world.setBlockStateId = originalWorldSetBlockStateId;
+      originalWorldSetBlockStateId = null;
+    }
+    if (originalLoadChunk) {
+      worldView.loadChunk = originalLoadChunk;
+      originalLoadChunk = null;
+    }
+    if (originalSetBlockStateId) {
+      worldView.setBlockStateId = originalSetBlockStateId;
+      originalSetBlockStateId = null;
+    }
+    worldViewPatched = false;
+  }
   xray.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("XRay");
     if (!window.anticlient) window.anticlient = { visuals: {} };
     if (!window.anticlient.visuals) window.anticlient.visuals = {};
     window.anticlient.visuals.xray = enabled;
     window.anticlient.visuals.xraySettings = xray.settings;
+    if (enabled) {
+      if (xray.settings.mode === "seethrough") {
+        patchWorldView();
+        if (log) log.info(`X-Ray enabled (${xray.settings.seeThroughMode} mode)`);
+      } else {
+        if (log) log.info("X-Ray enabled (highlight mode)");
+      }
+    } else {
+      unpatchWorldView();
+      if (log) log.info("X-Ray disabled");
+    }
   };
   xray.onTick = (bot) => {
-    if (Date.now() - xray.lastScan > 1e3) {
-      const blocks = bot.findBlocks({
-        matching: (block) => xray.settings.blocks.some((name) => block.name.includes(name)),
-        maxDistance: xray.settings.range,
-        count: 200
-      });
-      if (window.anticlient?.visuals) {
-        window.anticlient.visuals.xrayBlocks = blocks;
+    if (xray.settings.mode === "highlight") {
+      if (Date.now() - xray.lastScan > 1e3) {
+        const blocks = bot.findBlocks({
+          matching: (block) => xray.settings.blocks.some((name) => block.name.includes(name)),
+          maxDistance: xray.settings.range,
+          count: 200
+        });
+        if (window.anticlient?.visuals) {
+          window.anticlient.visuals.xrayBlocks = blocks;
+        }
+        xray.lastScan = Date.now();
       }
-      xray.lastScan = Date.now();
+    } else if (xray.settings.mode === "seethrough" && xray.settings.seeThroughMode === "opacity") {
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.xrayOpacity = {
+          enabled: true,
+          hideBlocks: xray.settings.hideBlocks,
+          opacity: xray.settings.opacity,
+          showBlocks: xray.settings.blocks
+        };
+      }
     }
   };
-  xray.settings = new Proxy(xray.settings, {
-    set: (target, prop, value) => {
-      target[prop] = value;
-      if (window.anticlient?.visuals) window.anticlient.visuals.xraySettings = target;
-      return true;
+  xray.onSettingChanged = (key, newValue, oldValue) => {
+    const log = window.anticlientLogger?.module("XRay");
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.xraySettings = xray.settings;
     }
-  });
+    if (key === "mode" && xray.enabled) {
+      if (newValue === "seethrough") {
+        patchWorldView();
+        if (log) log.info(`Switched to seethrough mode (${xray.settings.seeThroughMode})`);
+      } else {
+        unpatchWorldView();
+        if (log) log.info("Switched to highlight mode");
+      }
+    }
+    if (key === "seeThroughMode" && xray.enabled && xray.settings.mode === "seethrough") {
+      if (newValue === "glass") {
+        patchWorldView();
+        if (log) log.info("Switched to glass mode");
+      } else {
+        unpatchWorldView();
+        if (log) log.info("Switched to opacity mode");
+      }
+    }
+  };
   registerModule(xray);
   const autoMine = new Module("automine", "Auto Mine", "World", "Automatically mine target blocks", {
     blocks: ["diamond_ore", "gold_ore", "iron_ore", "emerald_ore"],
