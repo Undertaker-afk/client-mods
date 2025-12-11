@@ -1367,6 +1367,160 @@ var loadRenderModules = () => {
     }
   };
   registerModule(blinkTrail);
+  const trajectory = new Module("trajectory", "Trajectory", "Render", "Draw predicted path for projectiles (bow, ender pearl, potions, etc.)", {
+    color: "#ffff00",
+    // Yellow default
+    landingColor: "#ff0000",
+    // Red for landing spot
+    lineWidth: 2,
+    opacity: 0.8,
+    showLanding: true,
+    // Show landing marker
+    showDistance: true,
+    // Show distance to landing
+    maxPoints: 100,
+    // Max trajectory points
+    simulationTime: 5,
+    // Max seconds to simulate
+    // Projectile-specific settings
+    arrowGravity: 0.05,
+    pearlGravity: 0.03,
+    potionGravity: 0.05,
+    snowballGravity: 0.03,
+    eggGravity: 0.03
+  });
+  const projectileData = {
+    bow: { velocity: 3, gravity: 0.05, drag: 0.99 },
+    crossbow: { velocity: 3.15, gravity: 0.05, drag: 0.99 },
+    ender_pearl: { velocity: 1.5, gravity: 0.03, drag: 0.99 },
+    splash_potion: { velocity: 0.5, gravity: 0.05, drag: 0.99 },
+    lingering_potion: { velocity: 0.5, gravity: 0.05, drag: 0.99 },
+    experience_bottle: { velocity: 0.7, gravity: 0.07, drag: 0.99 },
+    snowball: { velocity: 1.5, gravity: 0.03, drag: 0.99 },
+    egg: { velocity: 1.5, gravity: 0.03, drag: 0.99 },
+    trident: { velocity: 2.5, gravity: 0.05, drag: 0.99 },
+    firework_rocket: { velocity: 1.5, gravity: 0, drag: 0.95 }
+  };
+  const getProjectileType = (itemName) => {
+    if (!itemName) return null;
+    if (itemName.includes("bow") && !itemName.includes("crossbow")) return "bow";
+    if (itemName.includes("crossbow")) return "crossbow";
+    if (itemName.includes("ender_pearl")) return "ender_pearl";
+    if (itemName.includes("splash_potion")) return "splash_potion";
+    if (itemName.includes("lingering_potion")) return "lingering_potion";
+    if (itemName.includes("experience_bottle")) return "experience_bottle";
+    if (itemName.includes("snowball")) return "snowball";
+    if (itemName.includes("egg")) return "egg";
+    if (itemName.includes("trident")) return "trident";
+    if (itemName.includes("firework")) return "firework_rocket";
+    return null;
+  };
+  const calculateTrajectory = (bot, projectileType, chargeLevel = 1) => {
+    const data = projectileData[projectileType];
+    if (!data) return { points: [], landing: null };
+    const points = [];
+    const startPos = {
+      x: bot.entity.position.x,
+      y: bot.entity.position.y + bot.entity.eyeHeight,
+      z: bot.entity.position.z
+    };
+    const yaw = bot.entity.yaw;
+    const pitch = bot.entity.pitch;
+    let velocityMagnitude = data.velocity;
+    if (projectileType === "bow" || projectileType === "crossbow") {
+      velocityMagnitude *= 0.3 + chargeLevel * 0.7;
+    }
+    let velocity = {
+      x: -Math.sin(yaw) * Math.cos(pitch) * velocityMagnitude,
+      y: Math.sin(pitch) * velocityMagnitude,
+      z: -Math.cos(yaw) * Math.cos(pitch) * velocityMagnitude
+    };
+    let pos = { ...startPos };
+    const gravity = data.gravity * 20;
+    const drag = data.drag;
+    const dt = 0.05;
+    let time = 0;
+    points.push({ x: pos.x, y: pos.y, z: pos.z, time: 0 });
+    for (let i = 0; i < trajectory.settings.maxPoints && time < trajectory.settings.simulationTime; i++) {
+      velocity.y -= gravity * dt;
+      velocity.x *= drag;
+      velocity.y *= drag;
+      velocity.z *= drag;
+      pos.x += velocity.x;
+      pos.y += velocity.y;
+      pos.z += velocity.z;
+      time += dt;
+      points.push({ x: pos.x, y: pos.y, z: pos.z, time });
+      if (pos.y < -64) break;
+      if (bot.blockAt) {
+        try {
+          const block = bot.blockAt({ x: Math.floor(pos.x), y: Math.floor(pos.y), z: Math.floor(pos.z) });
+          if (block && block.name !== "air" && block.name !== "water" && block.name !== "lava") {
+            break;
+          }
+        } catch (e) {
+        }
+      }
+    }
+    const landing = points.length > 0 ? points[points.length - 1] : null;
+    return { points, landing };
+  };
+  trajectory.onTick = (bot) => {
+    if (!bot || !bot.heldItem) {
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.trajectory = { enabled: false };
+      }
+      return;
+    }
+    const itemName = bot.heldItem.name;
+    const projectileType = getProjectileType(itemName);
+    if (!projectileType) {
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.trajectory = { enabled: false };
+      }
+      return;
+    }
+    let chargeLevel = 1;
+    if ((projectileType === "bow" || projectileType === "crossbow") && bot.isUsingItem) {
+      const useTime = bot.usingItemTime || 0;
+      chargeLevel = Math.min(1, useTime / 20);
+    }
+    const { points, landing } = calculateTrajectory(bot, projectileType, chargeLevel);
+    let landingDistance = 0;
+    if (landing) {
+      landingDistance = Math.sqrt(
+        Math.pow(landing.x - bot.entity.position.x, 2) + Math.pow(landing.y - bot.entity.position.y, 2) + Math.pow(landing.z - bot.entity.position.z, 2)
+      );
+    }
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.trajectory = {
+      enabled: true,
+      projectileType,
+      points,
+      landing,
+      landingDistance,
+      chargeLevel,
+      color: trajectory.settings.color,
+      landingColor: trajectory.settings.landingColor,
+      lineWidth: trajectory.settings.lineWidth,
+      opacity: trajectory.settings.opacity,
+      showLanding: trajectory.settings.showLanding,
+      showDistance: trajectory.settings.showDistance
+    };
+  };
+  trajectory.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("Trajectory");
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    if (enabled) {
+      if (log) log.info("Trajectory preview enabled");
+    } else {
+      window.anticlient.visuals.trajectory = { enabled: false };
+      if (log) log.info("Trajectory preview disabled");
+    }
+  };
+  registerModule(trajectory);
 };
 
 // anticlient/src/modules/player.js

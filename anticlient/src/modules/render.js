@@ -340,5 +340,207 @@ export const loadRenderModules = () => {
     }
 
     registerModule(blinkTrail)
+
+    // -- Projectile Trajectory Preview --
+    const trajectory = new Module('trajectory', 'Trajectory', 'Render', 'Draw predicted path for projectiles (bow, ender pearl, potions, etc.)', {
+        color: '#ffff00', // Yellow default
+        landingColor: '#ff0000', // Red for landing spot
+        lineWidth: 2,
+        opacity: 0.8,
+        showLanding: true, // Show landing marker
+        showDistance: true, // Show distance to landing
+        maxPoints: 100, // Max trajectory points
+        simulationTime: 5.0, // Max seconds to simulate
+        // Projectile-specific settings
+        arrowGravity: 0.05,
+        pearlGravity: 0.03,
+        potionGravity: 0.05,
+        snowballGravity: 0.03,
+        eggGravity: 0.03
+    })
+
+    // Projectile physics constants
+    const projectileData = {
+        bow: { velocity: 3.0, gravity: 0.05, drag: 0.99 },
+        crossbow: { velocity: 3.15, gravity: 0.05, drag: 0.99 },
+        ender_pearl: { velocity: 1.5, gravity: 0.03, drag: 0.99 },
+        splash_potion: { velocity: 0.5, gravity: 0.05, drag: 0.99 },
+        lingering_potion: { velocity: 0.5, gravity: 0.05, drag: 0.99 },
+        experience_bottle: { velocity: 0.7, gravity: 0.07, drag: 0.99 },
+        snowball: { velocity: 1.5, gravity: 0.03, drag: 0.99 },
+        egg: { velocity: 1.5, gravity: 0.03, drag: 0.99 },
+        trident: { velocity: 2.5, gravity: 0.05, drag: 0.99 },
+        firework_rocket: { velocity: 1.5, gravity: 0.0, drag: 0.95 }
+    }
+
+    // Check if item is a projectile
+    const getProjectileType = (itemName) => {
+        if (!itemName) return null
+        
+        if (itemName.includes('bow') && !itemName.includes('crossbow')) return 'bow'
+        if (itemName.includes('crossbow')) return 'crossbow'
+        if (itemName.includes('ender_pearl')) return 'ender_pearl'
+        if (itemName.includes('splash_potion')) return 'splash_potion'
+        if (itemName.includes('lingering_potion')) return 'lingering_potion'
+        if (itemName.includes('experience_bottle')) return 'experience_bottle'
+        if (itemName.includes('snowball')) return 'snowball'
+        if (itemName.includes('egg')) return 'egg'
+        if (itemName.includes('trident')) return 'trident'
+        if (itemName.includes('firework')) return 'firework_rocket'
+        
+        return null
+    }
+
+    // Calculate trajectory points
+    const calculateTrajectory = (bot, projectileType, chargeLevel = 1.0) => {
+        const data = projectileData[projectileType]
+        if (!data) return { points: [], landing: null }
+
+        const points = []
+        const startPos = {
+            x: bot.entity.position.x,
+            y: bot.entity.position.y + bot.entity.eyeHeight,
+            z: bot.entity.position.z
+        }
+
+        // Calculate initial velocity based on look direction
+        const yaw = bot.entity.yaw
+        const pitch = bot.entity.pitch
+
+        // Velocity scales with charge for bows
+        let velocityMagnitude = data.velocity
+        if (projectileType === 'bow' || projectileType === 'crossbow') {
+            velocityMagnitude *= (0.3 + chargeLevel * 0.7) // 30% to 100% velocity
+        }
+
+        let velocity = {
+            x: -Math.sin(yaw) * Math.cos(pitch) * velocityMagnitude,
+            y: Math.sin(pitch) * velocityMagnitude,
+            z: -Math.cos(yaw) * Math.cos(pitch) * velocityMagnitude
+        }
+
+        let pos = { ...startPos }
+        const gravity = data.gravity * 20 // Scale for ticks
+        const drag = data.drag
+        const dt = 0.05 // Time step (50ms = 1 tick)
+        let time = 0
+
+        points.push({ x: pos.x, y: pos.y, z: pos.z, time: 0 })
+
+        // Simulate trajectory
+        for (let i = 0; i < trajectory.settings.maxPoints && time < trajectory.settings.simulationTime; i++) {
+            // Update velocity (gravity + drag)
+            velocity.y -= gravity * dt
+            velocity.x *= drag
+            velocity.y *= drag
+            velocity.z *= drag
+
+            // Update position
+            pos.x += velocity.x
+            pos.y += velocity.y
+            pos.z += velocity.z
+            time += dt
+
+            points.push({ x: pos.x, y: pos.y, z: pos.z, time: time })
+
+            // Check for ground collision (simple Y check)
+            if (pos.y < -64) break
+
+            // Check for block collision
+            if (bot.blockAt) {
+                try {
+                    const block = bot.blockAt({ x: Math.floor(pos.x), y: Math.floor(pos.y), z: Math.floor(pos.z) })
+                    if (block && block.name !== 'air' && block.name !== 'water' && block.name !== 'lava') {
+                        // Hit a block - this is the landing point
+                        break
+                    }
+                } catch (e) {
+                    // Ignore block check errors
+                }
+            }
+        }
+
+        // Landing point is the last point
+        const landing = points.length > 0 ? points[points.length - 1] : null
+
+        return { points, landing }
+    }
+
+    trajectory.onTick = (bot) => {
+        if (!bot || !bot.heldItem) {
+            // Clear trajectory when no item held
+            if (window.anticlient?.visuals) {
+                window.anticlient.visuals.trajectory = { enabled: false }
+            }
+            return
+        }
+
+        const itemName = bot.heldItem.name
+        const projectileType = getProjectileType(itemName)
+
+        if (!projectileType) {
+            if (window.anticlient?.visuals) {
+                window.anticlient.visuals.trajectory = { enabled: false }
+            }
+            return
+        }
+
+        // Calculate charge level for bows
+        let chargeLevel = 1.0
+        if ((projectileType === 'bow' || projectileType === 'crossbow') && bot.isUsingItem) {
+            // Estimate charge based on how long item has been used
+            // Full charge is ~1 second (20 ticks)
+            const useTime = bot.usingItemTime || 0
+            chargeLevel = Math.min(1.0, useTime / 20)
+        }
+
+        // Calculate trajectory
+        const { points, landing } = calculateTrajectory(bot, projectileType, chargeLevel)
+
+        // Calculate distance to landing
+        let landingDistance = 0
+        if (landing) {
+            landingDistance = Math.sqrt(
+                Math.pow(landing.x - bot.entity.position.x, 2) +
+                Math.pow(landing.y - bot.entity.position.y, 2) +
+                Math.pow(landing.z - bot.entity.position.z, 2)
+            )
+        }
+
+        // Expose trajectory data for rendering
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        window.anticlient.visuals.trajectory = {
+            enabled: true,
+            projectileType: projectileType,
+            points: points,
+            landing: landing,
+            landingDistance: landingDistance,
+            chargeLevel: chargeLevel,
+            color: trajectory.settings.color,
+            landingColor: trajectory.settings.landingColor,
+            lineWidth: trajectory.settings.lineWidth,
+            opacity: trajectory.settings.opacity,
+            showLanding: trajectory.settings.showLanding,
+            showDistance: trajectory.settings.showDistance
+        }
+    }
+
+    trajectory.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('Trajectory')
+        
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        if (enabled) {
+            if (log) log.info('Trajectory preview enabled')
+        } else {
+            window.anticlient.visuals.trajectory = { enabled: false }
+            if (log) log.info('Trajectory preview disabled')
+        }
+    }
+
+    registerModule(trajectory)
 }
 
