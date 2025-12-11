@@ -1,4 +1,4 @@
-// src/core/Module.js
+// anticlient/src/core/Module.js
 var Module = class {
   constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
     this.id = id;
@@ -56,7 +56,7 @@ var registerModule = (module) => {
   return module;
 };
 
-// src/modules/combat.js
+// anticlient/src/modules/combat.js
 var loadCombatModules = () => {
   const logger2 = window.anticlientLogger?.module("Combat") || console;
   let criticalsModule = null;
@@ -287,7 +287,7 @@ var loadCombatModules = () => {
   registerModule(autoArmor);
 };
 
-// src/modules/movement.js
+// anticlient/src/modules/movement.js
 var loadMovementModules = () => {
   const flight = new Module("flight", "Flight", "Movement", "Allows you to fly like in creative mode", {
     speed: 1,
@@ -798,7 +798,7 @@ var loadMovementModules = () => {
   registerModule(portalGUI);
 };
 
-// src/modules/render.js
+// anticlient/src/modules/render.js
 var loadRenderModules = () => {
   const fullbright = new Module("fullbright", "Fullbright", "Render", "See in the dark", { gamma: 1 });
   registerModule(fullbright);
@@ -946,7 +946,7 @@ var loadRenderModules = () => {
   registerModule(storageEsp);
 };
 
-// src/modules/player.js
+// anticlient/src/modules/player.js
 var loadPlayerModules = () => {
   const autoEat = new Module("autoeat", "Auto Eat", "Player", "Automatically eats food when hungry", {
     healthThreshold: 16,
@@ -1250,7 +1250,7 @@ var loadPlayerModules = () => {
   registerModule(packetMine);
 };
 
-// src/modules/world.js
+// anticlient/src/modules/world.js
 var loadWorldModules = () => {
   const nuker = new Module("nuker", "Nuker", "World", "Break blocks around you", {
     range: 4,
@@ -1369,7 +1369,7 @@ var loadWorldModules = () => {
   registerModule(autoMine);
 };
 
-// src/modules/network.js
+// anticlient/src/modules/network.js
 var loadNetworkModules = () => {
   const wireless = new Module("wireless", "Wireless Integration", "Settings", "Connect to desktop bridge", {
     enabled: false,
@@ -1470,6 +1470,25 @@ var loadNetworkModules = () => {
         update.pitch = window.bot.entity.pitch;
         update.health = window.bot.health;
         update.food = window.bot.food;
+        const blocks = [];
+        const pos = window.bot.entity.position;
+        const range = 40;
+        for (let x = Math.floor(pos.x) - range; x <= Math.floor(pos.x) + range; x++) {
+          for (let y = Math.floor(pos.y) - range; y <= Math.floor(pos.y) + range; y++) {
+            for (let z = Math.floor(pos.z) - range; z <= Math.floor(pos.z) + range; z++) {
+              const block = window.bot.blockAt(new window.bot.world.Vec3(x, y, z));
+              if (block && block.name !== "air") {
+                blocks.push({
+                  name: block.name,
+                  x,
+                  y,
+                  z
+                });
+              }
+            }
+          }
+        }
+        update.blocks = blocks;
       }
       if (update.position || update.inventory) {
         ws.send(JSON.stringify(update));
@@ -1505,7 +1524,7 @@ var loadNetworkModules = () => {
   registerModule(wireless);
 };
 
-// src/modules/client.js
+// anticlient/src/modules/client.js
 var loadClientModules = () => {
   const settings = new Module("client_settings", "Client Settings", "Settings", "Client configuration", {
     theme: "Default",
@@ -1577,7 +1596,7 @@ var loadClientModules = () => {
   registerModule(settings);
 };
 
-// src/modules/packets.js
+// anticlient/src/modules/packets.js
 var loadPacketsModules = () => {
   const packetViewer = new Module("packetviewer", "Packet Viewer", "Packets", "View all Minecraft network packets", {
     enabled: false,
@@ -1859,7 +1878,7 @@ var loadPacketsModules = () => {
   registerModule(fakeLag);
 };
 
-// src/ui/index.js
+// anticlient/src/ui/index.js
 var initUI = () => {
   const existingRoot = document.getElementById("anticlient-root");
   if (existingRoot) existingRoot.remove();
@@ -3538,7 +3557,7 @@ var initUI = () => {
   };
 };
 
-// src/logger.js
+// anticlient/src/logger.js
 var LogLevel = {
   DEBUG: 0,
   INFO: 1,
@@ -3600,7 +3619,7 @@ if (typeof window !== "undefined") {
   window.anticlientLogger = logger;
 }
 
-// entry.js
+// anticlient/entry.js
 var entry_default = (mod) => {
   if (window.anticlient && window.anticlient.cleanup) {
     try {

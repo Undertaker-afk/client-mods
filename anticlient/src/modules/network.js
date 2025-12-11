@@ -119,6 +119,29 @@ export const loadNetworkModules = () => {
                 update.pitch = window.bot.entity.pitch
                 update.health = window.bot.health
                 update.food = window.bot.food
+                
+                // Send nearby blocks (5x5x5 cube around player)
+                const blocks = []
+                const pos = window.bot.entity.position
+                const range = 40
+                
+                for (let x = Math.floor(pos.x) - range; x <= Math.floor(pos.x) + range; x++) {
+                    for (let y = Math.floor(pos.y) - range; y <= Math.floor(pos.y) + range; y++) {
+                        for (let z = Math.floor(pos.z) - range; z <= Math.floor(pos.z) + range; z++) {
+                            const block = window.bot.blockAt(new window.bot.world.Vec3(x, y, z))
+                            if (block && block.name !== 'air') {
+                                blocks.push({
+                                    name: block.name,
+                                    x: x,
+                                    y: y,
+                                    z: z
+                                })
+                            }
+                        }
+                    }
+                }
+                
+                update.blocks = blocks
             }
 
             // Only send if we have meaningful data
