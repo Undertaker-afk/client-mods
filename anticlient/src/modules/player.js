@@ -531,5 +531,139 @@ export const loadPlayerModules = () => {
     }
 
     registerModule(antiAfk)
+
+    // -- Timer (Game Speed) --
+    const timer = new Module('timer', 'Timer', 'Player', 'Speed up or slow down game ticks', {
+        speed: 2.0, // 1.0 = normal, 2.0 = 2x speed, 0.5 = half speed
+        maxSpeed: 10.0,
+        affectMovement: true,
+        affectAnimations: true
+    })
+
+    let timerInterval = null
+    let originalPhysicsInterval = null
+
+    timer.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('Timer')
+        
+        if (enabled) {
+            const speed = Math.min(timer.settings.speed, timer.settings.maxSpeed)
+            
+            if (window.bot && window.bot.physics) {
+                // Modify physics tick rate
+                if (timer.settings.affectMovement) {
+                    originalPhysicsInterval = window.bot.physics.tickInterval || 50
+                    window.bot.physics.tickInterval = originalPhysicsInterval / speed
+                }
+            }
+
+            // Accelerate game time
+            timerInterval = setInterval(() => {
+                if (!window.bot) return
+                
+                // Speed up ticks by calling physics update multiple times
+                const extraTicks = Math.floor(speed) - 1
+                for (let i = 0; i < extraTicks; i++) {
+                    if (window.bot.physics && timer.settings.affectMovement) {
+                        try {
+                            window.bot.physics.tick()
+                        } catch (e) {
+                            // Ignore physics errors
+                        }
+                    }
+                }
+            }, 50)
+
+            if (log) log.info(`Timer enabled at ${speed}x speed`)
+        } else {
+            // Restore normal speed
+            if (timerInterval) {
+                clearInterval(timerInterval)
+                timerInterval = null
+            }
+
+            if (originalPhysicsInterval !== null && window.bot && window.bot.physics) {
+                window.bot.physics.tickInterval = originalPhysicsInterval
+                originalPhysicsInterval = null
+            }
+
+            if (log) log.info('Timer disabled - normal speed restored')
+        }
+    }
+
+    timer.onSettingChanged = (key, newValue) => {
+        const log = window.anticlientLogger?.module('Timer')
+        
+        if (key === 'speed' && timer.enabled) {
+            if (log) log.info(`Timer speed changed to ${newValue}x`)
+            // Restart timer with new speed
+            timer.toggle()
+            setTimeout(() => timer.toggle(), 50)
+        }
+    }
+
+    registerModule(timer)
+
+    // -- Anti Hunger --
+    const antiHunger = new Module('antihunger', 'Anti Hunger', 'Player', 'Reduce hunger consumption', {
+        mode: 'sprint', // 'sprint' | 'packet' | 'both'
+        cancelSprint: true, // Cancel sprint packets
+        onGroundSpoof: true // Spoof onGround to reduce hunger
+    }, {
+        mode: { type: 'dropdown', options: ['sprint', 'packet', 'both'] }
+    })
+
+    let originalSprint = null
+    let hungerPacketHandler = null
+
+    antiHunger.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('AntiHunger')
+        
+        if (enabled) {
+            const bot = window.bot
+            if (!bot) return
+
+            // Sprint mode: optimize sprinting
+            if ((antiHunger.settings.mode === 'sprint' || antiHunger.settings.mode === 'both') && antiHunger.settings.cancelSprint) {
+                originalSprint = bot.setSprinting.bind(bot)
+                bot.setSprinting = (sprint) => {
+                    // Only sprint when actually moving forward
+                    if (sprint && !bot.controlState.forward) {
+                        return // Don't sprint if not moving forward
+                    }
+                    originalSprint(sprint)
+                }
+            }
+
+            // Packet mode: spoof onGround
+            if ((antiHunger.settings.mode === 'packet' || antiHunger.settings.mode === 'both') && antiHunger.settings.onGroundSpoof) {
+                if (bot._client) {
+                    // Intercept position packets
+                    const originalWrite = bot._client.write.bind(bot._client)
+                    bot._client.write = (name, params) => {
+                        if (name === 'position' || name === 'position_look') {
+                            // Always set onGround to true to reduce hunger
+                            if (params && bot.entity.velocity.y === 0) {
+                                params.onGround = true
+                            }
+                        }
+                        return originalWrite(name, params)
+                    }
+                }
+            }
+
+            if (log) log.info(`Anti Hunger enabled (${antiHunger.settings.mode} mode)`)
+        } else {
+            // Restore original functions
+            if (originalSprint && window.bot) {
+                window.bot.setSprinting = originalSprint
+                originalSprint = null
+            }
+
+            if (log) log.info('Anti Hunger disabled')
+        }
+    }
+
+    registerModule(antiHunger)
 }
 

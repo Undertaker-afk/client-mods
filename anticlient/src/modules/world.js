@@ -324,4 +324,118 @@ export const loadWorldModules = () => {
         }
     }
     registerModule(autoMine)
+
+    // -- Search (Block Finder) --
+    const search = new Module('search', 'Search', 'World', 'Search and highlight blocks in loaded chunks', {
+        blocks: ['diamond_ore'], // Blocks to search for
+        range: 64,
+        maxResults: 500,
+        highlightColor: '#00ffff',
+        showDistance: true,
+        showCount: true,
+        sortByDistance: true
+    })
+
+    let searchResults = []
+    let lastSearchTime = 0
+
+    search.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('Search')
+        
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+
+        if (enabled) {
+            // Perform initial search
+            performSearch()
+            if (log) log.info(`Search enabled - looking for: ${search.settings.blocks.join(', ')}`)
+        } else {
+            searchResults = []
+            window.anticlient.visuals.searchResults = []
+            if (log) log.info('Search disabled')
+        }
+    }
+
+    const performSearch = () => {
+        if (!window.bot) return
+
+        const bot = window.bot
+        searchResults = []
+
+        try {
+            // Search for each block type
+            for (const blockName of search.settings.blocks) {
+                const blocks = bot.findBlocks({
+                    matching: (block) => block.name === blockName || block.name.includes(blockName),
+                    maxDistance: search.settings.range,
+                    count: search.settings.maxResults
+                })
+
+                // Add blocks with metadata
+                for (const blockPos of blocks) {
+                    const distance = bot.entity.position.distanceTo(blockPos)
+                    const block = bot.blockAt(blockPos)
+                    
+                    searchResults.push({
+                        position: blockPos,
+                        distance: distance,
+                        blockName: block ? block.name : blockName,
+                        displayName: block ? block.displayName : blockName
+                    })
+                }
+            }
+
+            // Sort by distance if enabled
+            if (search.settings.sortByDistance) {
+                searchResults.sort((a, b) => a.distance - b.distance)
+            }
+
+            // Limit to maxResults
+            searchResults = searchResults.slice(0, search.settings.maxResults)
+
+            // Expose to visuals
+            if (window.anticlient?.visuals) {
+                window.anticlient.visuals.searchResults = searchResults.map(r => ({
+                    position: r.position,
+                    distance: r.distance,
+                    color: search.settings.highlightColor,
+                    showDistance: search.settings.showDistance,
+                    name: r.displayName
+                }))
+
+                window.anticlient.visuals.searchCount = searchResults.length
+            }
+
+        } catch (e) {
+            console.error('Search error:', e)
+        }
+    }
+
+    search.onTick = (bot) => {
+        // Re-search every 2 seconds
+        const now = Date.now()
+        if (now - lastSearchTime > 2000) {
+            performSearch()
+            lastSearchTime = now
+        }
+    }
+
+    search.onSettingChanged = (key, newValue) => {
+        const log = window.anticlientLogger?.module('Search')
+        
+        if (key === 'blocks' && search.enabled) {
+            if (log) log.info(`Search blocks updated: ${newValue.join(', ')}`)
+            performSearch()
+        } else if (key === 'range' && search.enabled) {
+            if (log) log.info(`Search range updated: ${newValue}`)
+            performSearch()
+        }
+
+        // Update visuals settings
+        if (window.anticlient?.visuals && search.enabled) {
+            window.anticlient.visuals.searchSettings = search.settings
+        }
+    }
+
+    registerModule(search)
 }

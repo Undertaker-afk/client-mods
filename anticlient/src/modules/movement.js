@@ -669,4 +669,128 @@ export const loadMovementModules = () => {
     }
 
     registerModule(portalGUI)
+
+    // -- Phase/Ghost (Wall Clipping) --
+    const phase = new Module('phase', 'Phase', 'Movement', 'Walk through walls using packet manipulation', {
+        mode: 'packet', // 'packet' | 'velocity'
+        speed: 0.3, // Movement speed through walls
+        vertical: false, // Allow vertical phasing
+        autoDisable: true // Auto-disable after 5 seconds
+    }, {
+        mode: { type: 'dropdown', options: ['packet', 'velocity'] }
+    })
+
+    let phaseStartTime = 0
+    let originalNoClip = null
+    let phaseInterval = null
+
+    phase.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('Phase')
+        
+        if (enabled) {
+            phaseStartTime = Date.now()
+            
+            if (phase.settings.mode === 'packet') {
+                // Packet mode: send position packets to clip through walls
+                phaseInterval = setInterval(() => {
+                    if (!window.bot || !window.bot._client) return
+                    
+                    const bot = window.bot
+                    const pos = bot.entity.position
+                    const yaw = bot.entity.yaw
+                    
+                    // Calculate movement direction
+                    let dx = 0
+                    let dz = 0
+                    let dy = 0
+                    
+                    if (bot.controlState.forward) {
+                        dx = -Math.sin(yaw) * phase.settings.speed
+                        dz = -Math.cos(yaw) * phase.settings.speed
+                    } else if (bot.controlState.back) {
+                        dx = Math.sin(yaw) * phase.settings.speed
+                        dz = Math.cos(yaw) * phase.settings.speed
+                    }
+                    
+                    if (phase.settings.vertical) {
+                        if (bot.controlState.jump) dy = phase.settings.speed
+                        if (bot.controlState.sneak) dy = -phase.settings.speed
+                    }
+                    
+                    // Send position packet to server (bypasses collision)
+                    if (dx !== 0 || dy !== 0 || dz !== 0) {
+                        bot._client.write('position', {
+                            x: pos.x + dx,
+                            y: pos.y + dy,
+                            z: pos.z + dz,
+                            onGround: false
+                        })
+                        
+                        // Update client position
+                        bot.entity.position.x += dx
+                        bot.entity.position.y += dy
+                        bot.entity.position.z += dz
+                    }
+                }, 50)
+            } else {
+                // Velocity mode: modify collision
+                if (window.bot && window.bot.entity) {
+                    originalNoClip = window.bot.entity.noClip || false
+                    window.bot.entity.noClip = true
+                }
+            }
+            
+            if (log) log.info(`Phase enabled (${phase.settings.mode} mode)`)
+            
+            // Auto-disable after 5 seconds
+            if (phase.settings.autoDisable) {
+                setTimeout(() => {
+                    if (phase.enabled) {
+                        phase.toggle()
+                        if (log) log.info('Phase auto-disabled after 5 seconds')
+                    }
+                }, 5000)
+            }
+        } else {
+            // Cleanup
+            if (phaseInterval) {
+                clearInterval(phaseInterval)
+                phaseInterval = null
+            }
+            
+            if (originalNoClip !== null && window.bot && window.bot.entity) {
+                window.bot.entity.noClip = originalNoClip
+                originalNoClip = null
+            }
+            
+            if (log) log.info('Phase disabled')
+        }
+    }
+
+    phase.onTick = (bot) => {
+        // Velocity mode movement
+        if (phase.settings.mode === 'velocity' && bot.entity.noClip) {
+            const yaw = bot.entity.yaw
+            const speed = phase.settings.speed
+            
+            if (bot.controlState.forward) {
+                bot.entity.velocity.x = -Math.sin(yaw) * speed
+                bot.entity.velocity.z = -Math.cos(yaw) * speed
+            } else if (bot.controlState.back) {
+                bot.entity.velocity.x = Math.sin(yaw) * speed
+                bot.entity.velocity.z = Math.cos(yaw) * speed
+            } else {
+                bot.entity.velocity.x = 0
+                bot.entity.velocity.z = 0
+            }
+            
+            if (phase.settings.vertical) {
+                if (bot.controlState.jump) bot.entity.velocity.y = speed
+                else if (bot.controlState.sneak) bot.entity.velocity.y = -speed
+                else bot.entity.velocity.y = 0
+            }
+        }
+    }
+
+    registerModule(phase)
 }

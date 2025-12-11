@@ -318,4 +318,193 @@ export const loadCombatModules = () => {
         }
     }
     registerModule(autoArmor)
+
+    // -- Bow Aimbot with Projectile Prediction --
+    const bowAimbot = new Module('bowaimbot', 'Bow Aimbot', 'Combat', 'Predict and aim at moving targets with bow/projectiles', {
+        range: 32,
+        target: 'players', // 'players' | 'mobs' | 'both'
+        predict: true, // Enable movement prediction
+        gravity: 0.05, // Arrow gravity
+        velocity: 3.0, // Arrow velocity (depends on charge)
+        autoCharge: true, // Auto-release at full charge
+        chargeTime: 1000, // ms for full charge
+        leadAmount: 1.0, // Lead multiplier (1.0 = perfect lead)
+        visualize: true // Show prediction line
+    }, {
+        target: { type: 'dropdown', options: ['players', 'mobs', 'both'] }
+    })
+
+    let chargingBow = false
+    let chargeStartTime = 0
+    let predictedHitPos = null
+
+    // Calculate arrow trajectory and predict hit position
+    const predictProjectileHit = (bot, target, velocity, gravity) => {
+        if (!target || !bot.entity) return null
+
+        const shooterPos = bot.entity.position.offset(0, bot.entity.eyeHeight, 0)
+        const targetPos = target.position.offset(0, target.height / 2, 0)
+        
+        // Get target velocity
+        const targetVel = target.velocity || { x: 0, y: 0, z: 0 }
+        
+        // Iterative prediction
+        let bestTime = 0
+        let bestError = Infinity
+        
+        for (let t = 0; t < 100; t += 0.05) {
+            // Predict target position at time t
+            const predictedTarget = {
+                x: targetPos.x + targetVel.x * t * 20, // Convert ticks to seconds
+                y: targetPos.y + targetVel.y * t * 20,
+                z: targetPos.z + targetVel.z * t * 20
+            }
+            
+            // Calculate required arrow trajectory
+            const dx = predictedTarget.x - shooterPos.x
+            const dy = predictedTarget.y - shooterPos.y
+            const dz = predictedTarget.z - shooterPos.z
+            const horizontalDist = Math.sqrt(dx * dx + dz * dz)
+            
+            // Time for arrow to reach target horizontally
+            const arrivalTime = horizontalDist / velocity
+            
+            // Calculate where arrow would be at this time
+            const arrowY = shooterPos.y + (velocity * Math.sin(Math.atan2(dy, horizontalDist)) * arrivalTime) - (0.5 * gravity * arrivalTime * arrivalTime * 400)
+            
+            // Error between predicted target Y and arrow Y
+            const error = Math.abs(arrowY - predictedTarget.y)
+            
+            if (error < bestError) {
+                bestError = error
+                bestTime = arrivalTime
+            }
+            
+            // Good enough
+            if (error < 0.1) break
+        }
+        
+        // Return predicted hit position
+        return {
+            x: targetPos.x + targetVel.x * bestTime * 20 * bowAimbot.settings.leadAmount,
+            y: targetPos.y + targetVel.y * bestTime * 20 * bowAimbot.settings.leadAmount,
+            z: targetPos.z + targetVel.z * bestTime * 20 * bowAimbot.settings.leadAmount
+        }
+    }
+
+    // Calculate pitch and yaw for projectile trajectory
+    const calculateProjectileAngle = (bot, targetPos, velocity, gravity) => {
+        const shooterPos = bot.entity.position.offset(0, bot.entity.eyeHeight, 0)
+        const dx = targetPos.x - shooterPos.x
+        const dy = targetPos.y - shooterPos.y
+        const dz = targetPos.z - shooterPos.z
+        
+        const horizontalDist = Math.sqrt(dx * dx + dz * dz)
+        const yaw = Math.atan2(-dx, -dz)
+        
+        // Solve ballistic trajectory equation
+        const v2 = velocity * velocity
+        const v4 = v2 * v2
+        const g = gravity * 400 // Scale gravity
+        const x = horizontalDist
+        const y = dy
+        
+        // Quadratic formula for launch angle
+        const underSqrt = v4 - g * (g * x * x + 2 * y * v2)
+        
+        if (underSqrt < 0) {
+            // Target out of range, aim directly
+            return {
+                yaw: yaw,
+                pitch: Math.atan2(dy, horizontalDist)
+            }
+        }
+        
+        const pitch = Math.atan((v2 - Math.sqrt(underSqrt)) / (g * x))
+        
+        return { yaw, pitch }
+    }
+
+    bowAimbot.onTick = (bot) => {
+        if (!bot.heldItem || !bot.heldItem.name.includes('bow')) {
+            chargingBow = false
+            predictedHitPos = null
+            return
+        }
+
+        const filter = bowAimbot.settings.target === 'players' ? (e => e.type === 'player') :
+                      bowAimbot.settings.target === 'mobs' ? (e => e.type === 'mob') :
+                      (e => e.type === 'player' || e.type === 'mob')
+        
+        const target = bot.nearestEntity(e => 
+            filter(e) && 
+            e.position.distanceTo(bot.entity.position) < bowAimbot.settings.range && 
+            e !== bot.entity
+        )
+
+        if (!target) {
+            chargingBow = false
+            predictedHitPos = null
+            return
+        }
+
+        // Calculate charge level
+        const chargeLevel = chargingBow ? Math.min(1.0, (Date.now() - chargeStartTime) / bowAimbot.settings.chargeTime) : 0
+        const currentVelocity = bowAimbot.settings.velocity * (0.5 + chargeLevel * 0.5) // 50% to 100% velocity
+
+        // Predict hit position
+        if (bowAimbot.settings.predict) {
+            predictedHitPos = predictProjectileHit(bot, target, currentVelocity, bowAimbot.settings.gravity)
+        } else {
+            predictedHitPos = {
+                x: target.position.x,
+                y: target.position.y + target.height / 2,
+                z: target.position.z
+            }
+        }
+
+        if (predictedHitPos) {
+            const angles = calculateProjectileAngle(bot, predictedHitPos, currentVelocity, bowAimbot.settings.gravity)
+            bot.look(angles.yaw, angles.pitch, false)
+
+            // Auto charge and release
+            if (bowAimbot.settings.autoCharge) {
+                if (!chargingBow) {
+                    // Start charging
+                    bot.activateItem()
+                    chargingBow = true
+                    chargeStartTime = Date.now()
+                } else if (chargeLevel >= 1.0) {
+                    // Release at full charge
+                    bot.deactivateItem()
+                    chargingBow = false
+                }
+            }
+
+            // Expose prediction for visualization
+            if (bowAimbot.settings.visualize) {
+                if (!window.anticlient) window.anticlient = { visuals: {} }
+                if (!window.anticlient.visuals) window.anticlient.visuals = {}
+                window.anticlient.visuals.projectilePrediction = {
+                    enabled: true,
+                    from: bot.entity.position.offset(0, bot.entity.eyeHeight, 0),
+                    to: predictedHitPos,
+                    target: target.position,
+                    charge: chargeLevel
+                }
+            }
+        }
+    }
+
+    bowAimbot.onToggle = (enabled) => {
+        if (!enabled) {
+            chargingBow = false
+            predictedHitPos = null
+            if (window.anticlient?.visuals) {
+                window.anticlient.visuals.projectilePrediction = { enabled: false }
+            }
+        }
+    }
+
+    registerModule(bowAimbot)
 }

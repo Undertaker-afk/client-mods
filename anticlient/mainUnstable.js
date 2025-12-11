@@ -319,6 +319,147 @@ var loadCombatModules = () => {
     }
   };
   registerModule(autoArmor);
+  const bowAimbot = new Module("bowaimbot", "Bow Aimbot", "Combat", "Predict and aim at moving targets with bow/projectiles", {
+    range: 32,
+    target: "players",
+    // 'players' | 'mobs' | 'both'
+    predict: true,
+    // Enable movement prediction
+    gravity: 0.05,
+    // Arrow gravity
+    velocity: 3,
+    // Arrow velocity (depends on charge)
+    autoCharge: true,
+    // Auto-release at full charge
+    chargeTime: 1e3,
+    // ms for full charge
+    leadAmount: 1,
+    // Lead multiplier (1.0 = perfect lead)
+    visualize: true
+    // Show prediction line
+  }, {
+    target: { type: "dropdown", options: ["players", "mobs", "both"] }
+  });
+  let chargingBow = false;
+  let chargeStartTime = 0;
+  let predictedHitPos = null;
+  const predictProjectileHit = (bot, target, velocity2, gravity) => {
+    if (!target || !bot.entity) return null;
+    const shooterPos = bot.entity.position.offset(0, bot.entity.eyeHeight, 0);
+    const targetPos = target.position.offset(0, target.height / 2, 0);
+    const targetVel = target.velocity || { x: 0, y: 0, z: 0 };
+    let bestTime = 0;
+    let bestError = Infinity;
+    for (let t = 0; t < 100; t += 0.05) {
+      const predictedTarget = {
+        x: targetPos.x + targetVel.x * t * 20,
+        // Convert ticks to seconds
+        y: targetPos.y + targetVel.y * t * 20,
+        z: targetPos.z + targetVel.z * t * 20
+      };
+      const dx = predictedTarget.x - shooterPos.x;
+      const dy = predictedTarget.y - shooterPos.y;
+      const dz = predictedTarget.z - shooterPos.z;
+      const horizontalDist = Math.sqrt(dx * dx + dz * dz);
+      const arrivalTime = horizontalDist / velocity2;
+      const arrowY = shooterPos.y + velocity2 * Math.sin(Math.atan2(dy, horizontalDist)) * arrivalTime - 0.5 * gravity * arrivalTime * arrivalTime * 400;
+      const error = Math.abs(arrowY - predictedTarget.y);
+      if (error < bestError) {
+        bestError = error;
+        bestTime = arrivalTime;
+      }
+      if (error < 0.1) break;
+    }
+    return {
+      x: targetPos.x + targetVel.x * bestTime * 20 * bowAimbot.settings.leadAmount,
+      y: targetPos.y + targetVel.y * bestTime * 20 * bowAimbot.settings.leadAmount,
+      z: targetPos.z + targetVel.z * bestTime * 20 * bowAimbot.settings.leadAmount
+    };
+  };
+  const calculateProjectileAngle = (bot, targetPos, velocity2, gravity) => {
+    const shooterPos = bot.entity.position.offset(0, bot.entity.eyeHeight, 0);
+    const dx = targetPos.x - shooterPos.x;
+    const dy = targetPos.y - shooterPos.y;
+    const dz = targetPos.z - shooterPos.z;
+    const horizontalDist = Math.sqrt(dx * dx + dz * dz);
+    const yaw = Math.atan2(-dx, -dz);
+    const v2 = velocity2 * velocity2;
+    const v4 = v2 * v2;
+    const g = gravity * 400;
+    const x = horizontalDist;
+    const y = dy;
+    const underSqrt = v4 - g * (g * x * x + 2 * y * v2);
+    if (underSqrt < 0) {
+      return {
+        yaw,
+        pitch: Math.atan2(dy, horizontalDist)
+      };
+    }
+    const pitch = Math.atan((v2 - Math.sqrt(underSqrt)) / (g * x));
+    return { yaw, pitch };
+  };
+  bowAimbot.onTick = (bot) => {
+    if (!bot.heldItem || !bot.heldItem.name.includes("bow")) {
+      chargingBow = false;
+      predictedHitPos = null;
+      return;
+    }
+    const filter = bowAimbot.settings.target === "players" ? ((e) => e.type === "player") : bowAimbot.settings.target === "mobs" ? ((e) => e.type === "mob") : ((e) => e.type === "player" || e.type === "mob");
+    const target = bot.nearestEntity(
+      (e) => filter(e) && e.position.distanceTo(bot.entity.position) < bowAimbot.settings.range && e !== bot.entity
+    );
+    if (!target) {
+      chargingBow = false;
+      predictedHitPos = null;
+      return;
+    }
+    const chargeLevel = chargingBow ? Math.min(1, (Date.now() - chargeStartTime) / bowAimbot.settings.chargeTime) : 0;
+    const currentVelocity = bowAimbot.settings.velocity * (0.5 + chargeLevel * 0.5);
+    if (bowAimbot.settings.predict) {
+      predictedHitPos = predictProjectileHit(bot, target, currentVelocity, bowAimbot.settings.gravity);
+    } else {
+      predictedHitPos = {
+        x: target.position.x,
+        y: target.position.y + target.height / 2,
+        z: target.position.z
+      };
+    }
+    if (predictedHitPos) {
+      const angles = calculateProjectileAngle(bot, predictedHitPos, currentVelocity, bowAimbot.settings.gravity);
+      bot.look(angles.yaw, angles.pitch, false);
+      if (bowAimbot.settings.autoCharge) {
+        if (!chargingBow) {
+          bot.activateItem();
+          chargingBow = true;
+          chargeStartTime = Date.now();
+        } else if (chargeLevel >= 1) {
+          bot.deactivateItem();
+          chargingBow = false;
+        }
+      }
+      if (bowAimbot.settings.visualize) {
+        if (!window.anticlient) window.anticlient = { visuals: {} };
+        if (!window.anticlient.visuals) window.anticlient.visuals = {};
+        window.anticlient.visuals.projectilePrediction = {
+          enabled: true,
+          from: bot.entity.position.offset(0, bot.entity.eyeHeight, 0),
+          to: predictedHitPos,
+          target: target.position,
+          charge: chargeLevel
+        };
+      }
+    }
+  };
+  bowAimbot.onToggle = (enabled) => {
+    if (!enabled) {
+      chargingBow = false;
+      predictedHitPos = null;
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.projectilePrediction = { enabled: false };
+      }
+    }
+  };
+  registerModule(bowAimbot);
 };
 
 // anticlient/src/modules/movement.js
@@ -842,6 +983,106 @@ var loadMovementModules = () => {
     }
   };
   registerModule(portalGUI);
+  const phase = new Module("phase", "Phase", "Movement", "Walk through walls using packet manipulation", {
+    mode: "packet",
+    // 'packet' | 'velocity'
+    speed: 0.3,
+    // Movement speed through walls
+    vertical: false,
+    // Allow vertical phasing
+    autoDisable: true
+    // Auto-disable after 5 seconds
+  }, {
+    mode: { type: "dropdown", options: ["packet", "velocity"] }
+  });
+  let phaseStartTime = 0;
+  let originalNoClip = null;
+  let phaseInterval = null;
+  phase.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("Phase");
+    if (enabled) {
+      phaseStartTime = Date.now();
+      if (phase.settings.mode === "packet") {
+        phaseInterval = setInterval(() => {
+          if (!window.bot || !window.bot._client) return;
+          const bot = window.bot;
+          const pos = bot.entity.position;
+          const yaw = bot.entity.yaw;
+          let dx = 0;
+          let dz = 0;
+          let dy = 0;
+          if (bot.controlState.forward) {
+            dx = -Math.sin(yaw) * phase.settings.speed;
+            dz = -Math.cos(yaw) * phase.settings.speed;
+          } else if (bot.controlState.back) {
+            dx = Math.sin(yaw) * phase.settings.speed;
+            dz = Math.cos(yaw) * phase.settings.speed;
+          }
+          if (phase.settings.vertical) {
+            if (bot.controlState.jump) dy = phase.settings.speed;
+            if (bot.controlState.sneak) dy = -phase.settings.speed;
+          }
+          if (dx !== 0 || dy !== 0 || dz !== 0) {
+            bot._client.write("position", {
+              x: pos.x + dx,
+              y: pos.y + dy,
+              z: pos.z + dz,
+              onGround: false
+            });
+            bot.entity.position.x += dx;
+            bot.entity.position.y += dy;
+            bot.entity.position.z += dz;
+          }
+        }, 50);
+      } else {
+        if (window.bot && window.bot.entity) {
+          originalNoClip = window.bot.entity.noClip || false;
+          window.bot.entity.noClip = true;
+        }
+      }
+      if (log) log.info(`Phase enabled (${phase.settings.mode} mode)`);
+      if (phase.settings.autoDisable) {
+        setTimeout(() => {
+          if (phase.enabled) {
+            phase.toggle();
+            if (log) log.info("Phase auto-disabled after 5 seconds");
+          }
+        }, 5e3);
+      }
+    } else {
+      if (phaseInterval) {
+        clearInterval(phaseInterval);
+        phaseInterval = null;
+      }
+      if (originalNoClip !== null && window.bot && window.bot.entity) {
+        window.bot.entity.noClip = originalNoClip;
+        originalNoClip = null;
+      }
+      if (log) log.info("Phase disabled");
+    }
+  };
+  phase.onTick = (bot) => {
+    if (phase.settings.mode === "velocity" && bot.entity.noClip) {
+      const yaw = bot.entity.yaw;
+      const speed2 = phase.settings.speed;
+      if (bot.controlState.forward) {
+        bot.entity.velocity.x = -Math.sin(yaw) * speed2;
+        bot.entity.velocity.z = -Math.cos(yaw) * speed2;
+      } else if (bot.controlState.back) {
+        bot.entity.velocity.x = Math.sin(yaw) * speed2;
+        bot.entity.velocity.z = Math.cos(yaw) * speed2;
+      } else {
+        bot.entity.velocity.x = 0;
+        bot.entity.velocity.z = 0;
+      }
+      if (phase.settings.vertical) {
+        if (bot.controlState.jump) bot.entity.velocity.y = speed2;
+        else if (bot.controlState.sneak) bot.entity.velocity.y = -speed2;
+        else bot.entity.velocity.y = 0;
+      }
+    }
+  };
+  registerModule(phase);
 };
 
 // anticlient/src/modules/render.js
@@ -1537,6 +1778,108 @@ var loadPlayerModules = () => {
     }
   };
   registerModule(antiAfk);
+  const timer = new Module("timer", "Timer", "Player", "Speed up or slow down game ticks", {
+    speed: 2,
+    // 1.0 = normal, 2.0 = 2x speed, 0.5 = half speed
+    maxSpeed: 10,
+    affectMovement: true,
+    affectAnimations: true
+  });
+  let timerInterval = null;
+  let originalPhysicsInterval = null;
+  timer.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("Timer");
+    if (enabled) {
+      const speed = Math.min(timer.settings.speed, timer.settings.maxSpeed);
+      if (window.bot && window.bot.physics) {
+        if (timer.settings.affectMovement) {
+          originalPhysicsInterval = window.bot.physics.tickInterval || 50;
+          window.bot.physics.tickInterval = originalPhysicsInterval / speed;
+        }
+      }
+      timerInterval = setInterval(() => {
+        if (!window.bot) return;
+        const extraTicks = Math.floor(speed) - 1;
+        for (let i = 0; i < extraTicks; i++) {
+          if (window.bot.physics && timer.settings.affectMovement) {
+            try {
+              window.bot.physics.tick();
+            } catch (e) {
+            }
+          }
+        }
+      }, 50);
+      if (log) log.info(`Timer enabled at ${speed}x speed`);
+    } else {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      if (originalPhysicsInterval !== null && window.bot && window.bot.physics) {
+        window.bot.physics.tickInterval = originalPhysicsInterval;
+        originalPhysicsInterval = null;
+      }
+      if (log) log.info("Timer disabled - normal speed restored");
+    }
+  };
+  timer.onSettingChanged = (key, newValue) => {
+    const log = window.anticlientLogger?.module("Timer");
+    if (key === "speed" && timer.enabled) {
+      if (log) log.info(`Timer speed changed to ${newValue}x`);
+      timer.toggle();
+      setTimeout(() => timer.toggle(), 50);
+    }
+  };
+  registerModule(timer);
+  const antiHunger = new Module("antihunger", "Anti Hunger", "Player", "Reduce hunger consumption", {
+    mode: "sprint",
+    // 'sprint' | 'packet' | 'both'
+    cancelSprint: true,
+    // Cancel sprint packets
+    onGroundSpoof: true
+    // Spoof onGround to reduce hunger
+  }, {
+    mode: { type: "dropdown", options: ["sprint", "packet", "both"] }
+  });
+  let originalSprint = null;
+  let hungerPacketHandler = null;
+  antiHunger.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("AntiHunger");
+    if (enabled) {
+      const bot = window.bot;
+      if (!bot) return;
+      if ((antiHunger.settings.mode === "sprint" || antiHunger.settings.mode === "both") && antiHunger.settings.cancelSprint) {
+        originalSprint = bot.setSprinting.bind(bot);
+        bot.setSprinting = (sprint) => {
+          if (sprint && !bot.controlState.forward) {
+            return;
+          }
+          originalSprint(sprint);
+        };
+      }
+      if ((antiHunger.settings.mode === "packet" || antiHunger.settings.mode === "both") && antiHunger.settings.onGroundSpoof) {
+        if (bot._client) {
+          const originalWrite = bot._client.write.bind(bot._client);
+          bot._client.write = (name, params) => {
+            if (name === "position" || name === "position_look") {
+              if (params && bot.entity.velocity.y === 0) {
+                params.onGround = true;
+              }
+            }
+            return originalWrite(name, params);
+          };
+        }
+      }
+      if (log) log.info(`Anti Hunger enabled (${antiHunger.settings.mode} mode)`);
+    } else {
+      if (originalSprint && window.bot) {
+        window.bot.setSprinting = originalSprint;
+        originalSprint = null;
+      }
+      if (log) log.info("Anti Hunger disabled");
+    }
+  };
+  registerModule(antiHunger);
 };
 
 // anticlient/src/modules/world.js
@@ -1809,6 +2152,92 @@ var loadWorldModules = () => {
     }
   };
   registerModule(autoMine);
+  const search = new Module("search", "Search", "World", "Search and highlight blocks in loaded chunks", {
+    blocks: ["diamond_ore"],
+    // Blocks to search for
+    range: 64,
+    maxResults: 500,
+    highlightColor: "#00ffff",
+    showDistance: true,
+    showCount: true,
+    sortByDistance: true
+  });
+  let searchResults = [];
+  let lastSearchTime = 0;
+  search.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("Search");
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    if (enabled) {
+      performSearch();
+      if (log) log.info(`Search enabled - looking for: ${search.settings.blocks.join(", ")}`);
+    } else {
+      searchResults = [];
+      window.anticlient.visuals.searchResults = [];
+      if (log) log.info("Search disabled");
+    }
+  };
+  const performSearch = () => {
+    if (!window.bot) return;
+    const bot = window.bot;
+    searchResults = [];
+    try {
+      for (const blockName of search.settings.blocks) {
+        const blocks = bot.findBlocks({
+          matching: (block) => block.name === blockName || block.name.includes(blockName),
+          maxDistance: search.settings.range,
+          count: search.settings.maxResults
+        });
+        for (const blockPos of blocks) {
+          const distance = bot.entity.position.distanceTo(blockPos);
+          const block = bot.blockAt(blockPos);
+          searchResults.push({
+            position: blockPos,
+            distance,
+            blockName: block ? block.name : blockName,
+            displayName: block ? block.displayName : blockName
+          });
+        }
+      }
+      if (search.settings.sortByDistance) {
+        searchResults.sort((a, b) => a.distance - b.distance);
+      }
+      searchResults = searchResults.slice(0, search.settings.maxResults);
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.searchResults = searchResults.map((r) => ({
+          position: r.position,
+          distance: r.distance,
+          color: search.settings.highlightColor,
+          showDistance: search.settings.showDistance,
+          name: r.displayName
+        }));
+        window.anticlient.visuals.searchCount = searchResults.length;
+      }
+    } catch (e) {
+      console.error("Search error:", e);
+    }
+  };
+  search.onTick = (bot) => {
+    const now = Date.now();
+    if (now - lastSearchTime > 2e3) {
+      performSearch();
+      lastSearchTime = now;
+    }
+  };
+  search.onSettingChanged = (key, newValue) => {
+    const log = window.anticlientLogger?.module("Search");
+    if (key === "blocks" && search.enabled) {
+      if (log) log.info(`Search blocks updated: ${newValue.join(", ")}`);
+      performSearch();
+    } else if (key === "range" && search.enabled) {
+      if (log) log.info(`Search range updated: ${newValue}`);
+      performSearch();
+    }
+    if (window.anticlient?.visuals && search.enabled) {
+      window.anticlient.visuals.searchSettings = search.settings;
+    }
+  };
+  registerModule(search);
 };
 
 // anticlient/src/modules/client.js
