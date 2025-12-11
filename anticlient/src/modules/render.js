@@ -171,4 +171,174 @@ export const loadRenderModules = () => {
         }
     }
     registerModule(storageEsp)
+
+    // -- HUD Overlay --
+    const hudOverlay = new Module('hudoverlay', 'HUD Overlay', 'Render', 'Show module info on screen', {
+        enabled: true,
+        position: 'top-right',
+        fontSize: 14,
+        opacity: 0.85
+    }, {
+        position: { type: 'dropdown', options: ['top-left', 'top-right', 'bottom-left', 'bottom-right'] }
+    })
+
+    let hudElement = null
+
+    hudOverlay.onToggle = (enabled) => {
+        if (enabled) {
+            createHUDElement()
+        } else {
+            if (hudElement) {
+                hudElement.remove()
+                hudElement = null
+            }
+        }
+    }
+
+    function createHUDElement() {
+        if (hudElement) return
+
+        hudElement = document.createElement('div')
+        hudElement.id = 'anticlient-hud'
+        hudElement.style.cssText = `
+            position: fixed;
+            z-index: 10000;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: ${hudOverlay.settings.fontSize}px;
+            color: white;
+            background: rgba(0, 0, 0, ${hudOverlay.settings.opacity});
+            padding: 10px;
+            border-radius: 6px;
+            border: 2px solid #7c4dff;
+            pointer-events: none;
+            user-select: none;
+            line-height: 1.6;
+            min-width: 200px;
+        `
+
+        // Position based on settings
+        const pos = hudOverlay.settings.position
+        if (pos.includes('top')) hudElement.style.top = '10px'
+        if (pos.includes('bottom')) hudElement.style.bottom = '10px'
+        if (pos.includes('left')) hudElement.style.left = '10px'
+        if (pos.includes('right')) hudElement.style.right = '10px'
+
+        document.body.appendChild(hudElement)
+    }
+
+    hudOverlay.onTick = (bot) => {
+        if (!hudElement) return
+
+        const lines = []
+        lines.push(`<div style="color: #b388ff; font-weight: bold; margin-bottom: 5px; text-align: center; border-bottom: 1px solid #7c4dff; padding-bottom: 5px;">ANTICLIENT</div>`)
+
+        // Check for modules with onHUD enabled
+        const { modules } = require('../core/Module.js')
+
+        // Blink info
+        const blinkModule = modules['blink']
+        if (blinkModule && blinkModule.enabled && blinkModule.settings.onHUD) {
+            const info = blinkModule.getHUDInfo()
+            if (info.active) {
+                const duration = (info.duration / 1000).toFixed(1)
+                const maxDuration = (info.maxTime / 1000).toFixed(0)
+                const progress = Math.min(100, (info.duration / info.maxTime) * 100)
+                
+                lines.push(`<div style="color: #ff00ff; margin-top: 5px;">`)
+                lines.push(`  <strong>⚡ BLINK RECORDING</strong>`)
+                lines.push(`  <div style="margin-left: 10px; font-size: 12px;">`)
+                lines.push(`    <div>Positions: ${info.positions}</div>`)
+                lines.push(`    <div>Time: ${duration}s / ${maxDuration}s</div>`)
+                lines.push(`    <div style="background: #333; height: 6px; border-radius: 3px; margin-top: 3px; overflow: hidden;">`)
+                lines.push(`      <div style="background: linear-gradient(90deg, #ff00ff, #7c4dff); height: 100%; width: ${progress}%;"></div>`)
+                lines.push(`    </div>`)
+                lines.push(`  </div>`)
+                lines.push(`</div>`)
+            } else {
+                lines.push(`<div style="color: #888; font-size: 12px; margin-top: 5px;">Blink: Ready</div>`)
+            }
+        }
+
+        // FakeLag info
+        const fakeLagModule = modules['fakelag']
+        if (fakeLagModule && fakeLagModule.enabled && fakeLagModule.settings.onHUD) {
+            const info = fakeLagModule.getQueueInfo()
+            
+            lines.push(`<div style="color: #ffaa00; margin-top: 8px;">`)
+            lines.push(`  <strong>📡 FAKE LAG</strong>`)
+            lines.push(`  <div style="margin-left: 10px; font-size: 12px;">`)
+            
+            if (fakeLagModule.settings.burstMode) {
+                const nextBurst = (info.nextBurstIn / 1000).toFixed(1)
+                lines.push(`    <div>Mode: Burst</div>`)
+                lines.push(`    <div>Queued: ${info.totalCount} packets</div>`)
+                lines.push(`    <div>Next burst: ${nextBurst}s</div>`)
+            } else {
+                lines.push(`    <div>Mode: Delay</div>`)
+                lines.push(`    <div>Out delay: ${fakeLagModule.settings.outgoingDelay}ms</div>`)
+                if (fakeLagModule.settings.delayIncoming) {
+                    lines.push(`    <div>In delay: ${fakeLagModule.settings.incomingDelay}ms</div>`)
+                }
+            }
+            
+            lines.push(`  </div>`)
+            lines.push(`</div>`)
+        }
+
+        hudElement.innerHTML = lines.join('\n')
+    }
+
+    hudOverlay.onSettingChanged = (key, newValue) => {
+        if (key === 'position' && hudElement) {
+            // Update position
+            hudElement.style.top = 'auto'
+            hudElement.style.bottom = 'auto'
+            hudElement.style.left = 'auto'
+            hudElement.style.right = 'auto'
+            
+            if (newValue.includes('top')) hudElement.style.top = '10px'
+            if (newValue.includes('bottom')) hudElement.style.bottom = '10px'
+            if (newValue.includes('left')) hudElement.style.left = '10px'
+            if (newValue.includes('right')) hudElement.style.right = '10px'
+        } else if (key === 'fontSize' && hudElement) {
+            hudElement.style.fontSize = newValue + 'px'
+        } else if (key === 'opacity' && hudElement) {
+            hudElement.style.background = `rgba(0, 0, 0, ${newValue})`
+        }
+    }
+
+    registerModule(hudOverlay)
+
+    // -- Blink Trail Renderer --
+    const blinkTrail = new Module('blinktrail', 'Blink Trail', 'Render', 'Visualize blink movement path (auto-enabled with Blink)', {
+        enabled: true,
+        color: '#ff00ff',
+        lineWidth: 3,
+        opacity: 0.7
+    })
+
+    blinkTrail.onRender = (bot) => {
+        // This will be rendered by the game's rendering system
+        // We expose the trail data through window.anticlient.visuals
+        const { modules } = require('../core/Module.js')
+        const blinkModule = modules['blink']
+        
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        if (blinkModule && blinkModule.enabled && blinkModule.settings.visualizeTrail) {
+            window.anticlient.visuals.blinkTrail = {
+                enabled: true,
+                positions: blinkModule.getPositionHistory(),
+                color: blinkModule.settings.trailColor || blinkTrail.settings.color,
+                lineWidth: blinkTrail.settings.lineWidth,
+                opacity: blinkTrail.settings.opacity
+            }
+        } else {
+            window.anticlient.visuals.blinkTrail = { enabled: false }
+        }
+    }
+
+    registerModule(blinkTrail)
 }
+

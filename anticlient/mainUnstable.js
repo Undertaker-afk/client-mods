@@ -1,62 +1,96 @@
-// anticlient/src/core/Module.js
-var Module = class {
-  constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
-    this.id = id;
-    this.name = name;
-    this.category = category;
-    this.description = description;
-    this.enabled = false;
-    this.bind = null;
-    this.uiElement = null;
-    this.settingsMetadata = settingsMetadata;
-    this.settings = new Proxy(defaultSettings, {
-      set: (target, prop, value) => {
-        const oldValue = target[prop];
-        target[prop] = value;
-        if (oldValue !== value && this.onSettingChanged) {
-          this.onSettingChanged(prop, value, oldValue);
-        }
-        return true;
-      }
-    });
-  }
-  toggle() {
-    this.enabled = !this.enabled;
-    if (this.uiElement) {
-      if (this.enabled) this.uiElement.classList.add("enabled");
-      else this.uiElement.classList.remove("enabled");
-    }
-    this.onToggle(this.enabled);
-  }
-  onToggle(enabled) {
-  }
-  onTick(bot) {
-  }
-  onRender(bot) {
-  }
-  onSettingChanged(key, newValue, oldValue) {
-  }
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
-var categories = {
-  "Combat": [],
-  "Movement": [],
-  "Render": [],
-  "Player": [],
-  "World": [],
-  "Settings": [],
-  "Packets": [],
-  "Network": [],
-  "Scripting": []
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
 };
-var modules = {};
-var registerModule = (module) => {
-  if (!categories[module.category]) categories[module.category] = [];
-  categories[module.category].push(module);
-  modules[module.id] = module;
-  return module;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
 };
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// anticlient/src/modules/combat.js
+// src/core/Module.js
+var Module_exports = {};
+__export(Module_exports, {
+  Module: () => Module,
+  categories: () => categories,
+  modules: () => modules,
+  registerModule: () => registerModule
+});
+var Module, categories, modules, registerModule;
+var init_Module = __esm({
+  "src/core/Module.js"() {
+    Module = class {
+      constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
+        this.id = id;
+        this.name = name;
+        this.category = category;
+        this.description = description;
+        this.enabled = false;
+        this.bind = null;
+        this.uiElement = null;
+        this.settingsMetadata = settingsMetadata;
+        this.settings = new Proxy(defaultSettings, {
+          set: (target, prop, value) => {
+            const oldValue = target[prop];
+            target[prop] = value;
+            if (oldValue !== value && this.onSettingChanged) {
+              this.onSettingChanged(prop, value, oldValue);
+            }
+            return true;
+          }
+        });
+      }
+      toggle() {
+        this.enabled = !this.enabled;
+        if (this.uiElement) {
+          if (this.enabled) this.uiElement.classList.add("enabled");
+          else this.uiElement.classList.remove("enabled");
+        }
+        this.onToggle(this.enabled);
+      }
+      onToggle(enabled) {
+      }
+      onTick(bot) {
+      }
+      onRender(bot) {
+      }
+      onSettingChanged(key, newValue, oldValue) {
+      }
+    };
+    categories = {
+      "Combat": [],
+      "Movement": [],
+      "Render": [],
+      "Player": [],
+      "World": [],
+      "Settings": [],
+      "Packets": [],
+      "Network": [],
+      "Scripting": []
+    };
+    modules = {};
+    registerModule = (module) => {
+      if (!categories[module.category]) categories[module.category] = [];
+      categories[module.category].push(module);
+      modules[module.id] = module;
+      return module;
+    };
+  }
+});
+
+// src/modules/combat.js
+init_Module();
 var loadCombatModules = () => {
   const logger2 = window.anticlientLogger?.module("Combat") || console;
   let criticalsModule = null;
@@ -287,7 +321,8 @@ var loadCombatModules = () => {
   registerModule(autoArmor);
 };
 
-// anticlient/src/modules/movement.js
+// src/modules/movement.js
+init_Module();
 var loadMovementModules = () => {
   const flight = new Module("flight", "Flight", "Movement", "Allows you to fly like in creative mode", {
     speed: 1,
@@ -549,30 +584,39 @@ var loadMovementModules = () => {
     }
   };
   registerModule(slowFall);
-  const blink = new Module("blink", "Blink", "Movement", "Record positions and teleport back", {
+  const blink = new Module("blink", "Blink", "Movement", "Hold button to record, release to teleport back", {
     recordInterval: 50,
     // ms between position recordings
     maxRecordTime: 1e4,
     // 10 seconds max
-    onHUD: false
-    // Show on HUD overlay
+    onHUD: true,
+    // Always show on HUD overlay
+    visualizeTrail: true,
+    // Show trail of recorded positions
+    trailColor: "#ff00ff"
+    // Trail color
   });
   let positionHistory = [];
   let isRecording = false;
   let recordStartPos = null;
   let recordStartTime = 0;
+  blink.getHUDInfo = () => ({
+    active: isRecording,
+    positions: positionHistory.length,
+    duration: isRecording ? Date.now() - recordStartTime : 0,
+    maxTime: blink.settings.maxRecordTime,
+    startPos: recordStartPos
+  });
+  blink.getPositionHistory = () => positionHistory;
   blink.onToggle = (enabled) => {
     const log = window.anticlientLogger?.module("Blink");
     if (!enabled) {
       positionHistory = [];
       isRecording = false;
       recordStartPos = null;
-      if (window.anticlient?.blinkUI) {
-        window.anticlient.blinkUI.active = false;
-      }
       if (log) log.info("Blink disabled, history cleared");
     } else {
-      if (log) log.info("Blink enabled - hold B to record path");
+      if (log) log.info("Blink enabled - Hold keybind to record path, release to teleport back");
     }
   };
   blink.onTick = (bot) => {
@@ -586,10 +630,6 @@ var loadMovementModules = () => {
         });
         const cutoffTime = now - blink.settings.maxRecordTime;
         positionHistory = positionHistory.filter((p) => p.time >= cutoffTime);
-        if (window.anticlient?.blinkUI) {
-          window.anticlient.blinkUI.positions = positionHistory.length;
-          window.anticlient.blinkUI.duration = now - recordStartTime;
-        }
       }
     }
   };
@@ -604,14 +644,7 @@ var loadMovementModules = () => {
         pos: recordStartPos.clone(),
         time: recordStartTime
       }];
-      if (window.anticlient) {
-        window.anticlient.blinkUI = {
-          active: true,
-          positions: 1,
-          duration: 0
-        };
-      }
-      if (log) log.info("Started recording positions");
+      if (log) log.info("Blink recording started");
     }
   });
   window.addEventListener("keyup", (e) => {
@@ -622,13 +655,12 @@ var loadMovementModules = () => {
       if (recordStartPos && positionHistory.length > 0) {
         const startPos = positionHistory[0].pos;
         window.bot.entity.position.set(startPos.x, startPos.y, startPos.z);
-        if (log) log.info(`Teleported back ${positionHistory.length} positions (${((Date.now() - recordStartTime) / 1e3).toFixed(1)}s)`);
+        const duration = ((Date.now() - recordStartTime) / 1e3).toFixed(1);
+        const distance = startPos.distanceTo(window.bot.entity.position);
+        if (log) log.info(`Blinked back ${positionHistory.length} positions (${duration}s, ${distance.toFixed(1)} blocks)`);
       }
       setTimeout(() => {
         positionHistory = [];
-        if (window.anticlient?.blinkUI) {
-          window.anticlient.blinkUI.active = false;
-        }
       }, 100);
     }
   });
@@ -798,7 +830,8 @@ var loadMovementModules = () => {
   registerModule(portalGUI);
 };
 
-// anticlient/src/modules/render.js
+// src/modules/render.js
+init_Module();
 var loadRenderModules = () => {
   const fullbright = new Module("fullbright", "Fullbright", "Render", "See in the dark", { gamma: 1 });
   registerModule(fullbright);
@@ -944,9 +977,145 @@ var loadRenderModules = () => {
     }
   };
   registerModule(storageEsp);
+  const hudOverlay = new Module("hudoverlay", "HUD Overlay", "Render", "Show module info on screen", {
+    enabled: true,
+    position: "top-right",
+    fontSize: 14,
+    opacity: 0.85
+  }, {
+    position: { type: "dropdown", options: ["top-left", "top-right", "bottom-left", "bottom-right"] }
+  });
+  let hudElement = null;
+  hudOverlay.onToggle = (enabled) => {
+    if (enabled) {
+      createHUDElement();
+    } else {
+      if (hudElement) {
+        hudElement.remove();
+        hudElement = null;
+      }
+    }
+  };
+  function createHUDElement() {
+    if (hudElement) return;
+    hudElement = document.createElement("div");
+    hudElement.id = "anticlient-hud";
+    hudElement.style.cssText = `
+            position: fixed;
+            z-index: 10000;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: ${hudOverlay.settings.fontSize}px;
+            color: white;
+            background: rgba(0, 0, 0, ${hudOverlay.settings.opacity});
+            padding: 10px;
+            border-radius: 6px;
+            border: 2px solid #7c4dff;
+            pointer-events: none;
+            user-select: none;
+            line-height: 1.6;
+            min-width: 200px;
+        `;
+    const pos = hudOverlay.settings.position;
+    if (pos.includes("top")) hudElement.style.top = "10px";
+    if (pos.includes("bottom")) hudElement.style.bottom = "10px";
+    if (pos.includes("left")) hudElement.style.left = "10px";
+    if (pos.includes("right")) hudElement.style.right = "10px";
+    document.body.appendChild(hudElement);
+  }
+  hudOverlay.onTick = (bot) => {
+    if (!hudElement) return;
+    const lines = [];
+    lines.push(`<div style="color: #b388ff; font-weight: bold; margin-bottom: 5px; text-align: center; border-bottom: 1px solid #7c4dff; padding-bottom: 5px;">ANTICLIENT</div>`);
+    const { modules: modules2 } = (init_Module(), __toCommonJS(Module_exports));
+    const blinkModule = modules2["blink"];
+    if (blinkModule && blinkModule.enabled && blinkModule.settings.onHUD) {
+      const info = blinkModule.getHUDInfo();
+      if (info.active) {
+        const duration = (info.duration / 1e3).toFixed(1);
+        const maxDuration = (info.maxTime / 1e3).toFixed(0);
+        const progress = Math.min(100, info.duration / info.maxTime * 100);
+        lines.push(`<div style="color: #ff00ff; margin-top: 5px;">`);
+        lines.push(`  <strong>\u26A1 BLINK RECORDING</strong>`);
+        lines.push(`  <div style="margin-left: 10px; font-size: 12px;">`);
+        lines.push(`    <div>Positions: ${info.positions}</div>`);
+        lines.push(`    <div>Time: ${duration}s / ${maxDuration}s</div>`);
+        lines.push(`    <div style="background: #333; height: 6px; border-radius: 3px; margin-top: 3px; overflow: hidden;">`);
+        lines.push(`      <div style="background: linear-gradient(90deg, #ff00ff, #7c4dff); height: 100%; width: ${progress}%;"></div>`);
+        lines.push(`    </div>`);
+        lines.push(`  </div>`);
+        lines.push(`</div>`);
+      } else {
+        lines.push(`<div style="color: #888; font-size: 12px; margin-top: 5px;">Blink: Ready</div>`);
+      }
+    }
+    const fakeLagModule = modules2["fakelag"];
+    if (fakeLagModule && fakeLagModule.enabled && fakeLagModule.settings.onHUD) {
+      const info = fakeLagModule.getQueueInfo();
+      lines.push(`<div style="color: #ffaa00; margin-top: 8px;">`);
+      lines.push(`  <strong>\u{1F4E1} FAKE LAG</strong>`);
+      lines.push(`  <div style="margin-left: 10px; font-size: 12px;">`);
+      if (fakeLagModule.settings.burstMode) {
+        const nextBurst = (info.nextBurstIn / 1e3).toFixed(1);
+        lines.push(`    <div>Mode: Burst</div>`);
+        lines.push(`    <div>Queued: ${info.totalCount} packets</div>`);
+        lines.push(`    <div>Next burst: ${nextBurst}s</div>`);
+      } else {
+        lines.push(`    <div>Mode: Delay</div>`);
+        lines.push(`    <div>Out delay: ${fakeLagModule.settings.outgoingDelay}ms</div>`);
+        if (fakeLagModule.settings.delayIncoming) {
+          lines.push(`    <div>In delay: ${fakeLagModule.settings.incomingDelay}ms</div>`);
+        }
+      }
+      lines.push(`  </div>`);
+      lines.push(`</div>`);
+    }
+    hudElement.innerHTML = lines.join("\n");
+  };
+  hudOverlay.onSettingChanged = (key, newValue) => {
+    if (key === "position" && hudElement) {
+      hudElement.style.top = "auto";
+      hudElement.style.bottom = "auto";
+      hudElement.style.left = "auto";
+      hudElement.style.right = "auto";
+      if (newValue.includes("top")) hudElement.style.top = "10px";
+      if (newValue.includes("bottom")) hudElement.style.bottom = "10px";
+      if (newValue.includes("left")) hudElement.style.left = "10px";
+      if (newValue.includes("right")) hudElement.style.right = "10px";
+    } else if (key === "fontSize" && hudElement) {
+      hudElement.style.fontSize = newValue + "px";
+    } else if (key === "opacity" && hudElement) {
+      hudElement.style.background = `rgba(0, 0, 0, ${newValue})`;
+    }
+  };
+  registerModule(hudOverlay);
+  const blinkTrail = new Module("blinktrail", "Blink Trail", "Render", "Visualize blink movement path (auto-enabled with Blink)", {
+    enabled: true,
+    color: "#ff00ff",
+    lineWidth: 3,
+    opacity: 0.7
+  });
+  blinkTrail.onRender = (bot) => {
+    const { modules: modules2 } = (init_Module(), __toCommonJS(Module_exports));
+    const blinkModule = modules2["blink"];
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    if (blinkModule && blinkModule.enabled && blinkModule.settings.visualizeTrail) {
+      window.anticlient.visuals.blinkTrail = {
+        enabled: true,
+        positions: blinkModule.getPositionHistory(),
+        color: blinkModule.settings.trailColor || blinkTrail.settings.color,
+        lineWidth: blinkTrail.settings.lineWidth,
+        opacity: blinkTrail.settings.opacity
+      };
+    } else {
+      window.anticlient.visuals.blinkTrail = { enabled: false };
+    }
+  };
+  registerModule(blinkTrail);
 };
 
-// anticlient/src/modules/player.js
+// src/modules/player.js
+init_Module();
 var loadPlayerModules = () => {
   const autoEat = new Module("autoeat", "Auto Eat", "Player", "Automatically eats food when hungry", {
     healthThreshold: 16,
@@ -1250,7 +1419,8 @@ var loadPlayerModules = () => {
   registerModule(packetMine);
 };
 
-// anticlient/src/modules/world.js
+// src/modules/world.js
+init_Module();
 var loadWorldModules = () => {
   const nuker = new Module("nuker", "Nuker", "World", "Break blocks around you", {
     range: 4,
@@ -1369,7 +1539,11 @@ var loadWorldModules = () => {
   registerModule(autoMine);
 };
 
-// anticlient/src/modules/network.js
+// src/modules/client.js
+init_Module();
+
+// src/modules/network.js
+init_Module();
 var loadNetworkModules = () => {
   const wireless = new Module("wireless", "Wireless Integration", "Settings", "Connect to desktop bridge", {
     enabled: false,
@@ -1524,7 +1698,7 @@ var loadNetworkModules = () => {
   registerModule(wireless);
 };
 
-// anticlient/src/modules/client.js
+// src/modules/client.js
 var loadClientModules = () => {
   const settings = new Module("client_settings", "Client Settings", "Settings", "Client configuration", {
     theme: "Default",
@@ -1596,7 +1770,8 @@ var loadClientModules = () => {
   registerModule(settings);
 };
 
-// anticlient/src/modules/packets.js
+// src/modules/packets.js
+init_Module();
 var loadPacketsModules = () => {
   const packetViewer = new Module("packetviewer", "Packet Viewer", "Packets", "View all Minecraft network packets", {
     enabled: false,
@@ -1720,8 +1895,8 @@ var loadPacketsModules = () => {
     // Send all delayed packets at once
     burstInterval: 1e3,
     // ms between bursts
-    onHUD: false
-    // Show on HUD overlay
+    onHUD: true
+    // Always show on HUD overlay
   });
   let outgoingQueue = [];
   let incomingQueue = [];
@@ -1878,7 +2053,11 @@ var loadPacketsModules = () => {
   registerModule(fakeLag);
 };
 
-// anticlient/src/ui/index.js
+// entry.js
+init_Module();
+
+// src/ui/index.js
+init_Module();
 var initUI = () => {
   const existingRoot = document.getElementById("anticlient-root");
   if (existingRoot) existingRoot.remove();
@@ -3557,7 +3736,7 @@ var initUI = () => {
   };
 };
 
-// anticlient/src/logger.js
+// src/logger.js
 var LogLevel = {
   DEBUG: 0,
   INFO: 1,
@@ -3619,7 +3798,7 @@ if (typeof window !== "undefined") {
   window.anticlientLogger = logger;
 }
 
-// anticlient/entry.js
+// entry.js
 var entry_default = (mod) => {
   if (window.anticlient && window.anticlient.cleanup) {
     try {

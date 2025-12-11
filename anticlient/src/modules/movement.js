@@ -339,10 +339,12 @@ export const loadMovementModules = () => {
     registerModule(slowFall)
 
     // -- Blink/Backtrack --
-    const blink = new Module('blink', 'Blink', 'Movement', 'Record positions and teleport back', {
+    const blink = new Module('blink', 'Blink', 'Movement', 'Hold button to record, release to teleport back', {
         recordInterval: 50, // ms between position recordings
         maxRecordTime: 10000, // 10 seconds max
-        onHUD: false // Show on HUD overlay
+        onHUD: true, // Always show on HUD overlay
+        visualizeTrail: true, // Show trail of recorded positions
+        trailColor: '#ff00ff' // Trail color
     })
 
     let positionHistory = [] // Array of {pos, time}
@@ -350,18 +352,27 @@ export const loadMovementModules = () => {
     let recordStartPos = null
     let recordStartTime = 0
 
+    // Expose state for HUD
+    blink.getHUDInfo = () => ({
+        active: isRecording,
+        positions: positionHistory.length,
+        duration: isRecording ? Date.now() - recordStartTime : 0,
+        maxTime: blink.settings.maxRecordTime,
+        startPos: recordStartPos
+    })
+
+    // Expose position history for rendering
+    blink.getPositionHistory = () => positionHistory
+
     blink.onToggle = (enabled) => {
         const log = window.anticlientLogger?.module('Blink')
         if (!enabled) {
             positionHistory = []
             isRecording = false
             recordStartPos = null
-            if (window.anticlient?.blinkUI) {
-                window.anticlient.blinkUI.active = false
-            }
             if (log) log.info('Blink disabled, history cleared')
         } else {
-            if (log) log.info('Blink enabled - hold B to record path')
+            if (log) log.info('Blink enabled - Hold keybind to record path, release to teleport back')
         }
     }
 
@@ -378,15 +389,9 @@ export const loadMovementModules = () => {
                     time: now
                 })
 
-                // Limit history to maxRecordTime
+                // Limit history to maxRecordTime (remove oldest)
                 const cutoffTime = now - blink.settings.maxRecordTime
                 positionHistory = positionHistory.filter(p => p.time >= cutoffTime)
-
-                // Update UI
-                if (window.anticlient?.blinkUI) {
-                    window.anticlient.blinkUI.positions = positionHistory.length
-                    window.anticlient.blinkUI.duration = now - recordStartTime
-                }
             }
         }
     }
@@ -405,15 +410,7 @@ export const loadMovementModules = () => {
                 time: recordStartTime
             }]
 
-            if (window.anticlient) {
-                window.anticlient.blinkUI = {
-                    active: true,
-                    positions: 1,
-                    duration: 0
-                }
-            }
-
-            if (log) log.info('Started recording positions')
+            if (log) log.info('Blink recording started')
         }
     })
 
@@ -424,20 +421,20 @@ export const loadMovementModules = () => {
             const log = window.anticlientLogger?.module('Blink')
             isRecording = false
 
-            // Teleport back to start position
+            // Teleport back to start position (earliest record)
             if (recordStartPos && positionHistory.length > 0) {
                 const startPos = positionHistory[0].pos
                 window.bot.entity.position.set(startPos.x, startPos.y, startPos.z)
 
-                if (log) log.info(`Teleported back ${positionHistory.length} positions (${((Date.now() - recordStartTime) / 1000).toFixed(1)}s)`)
+                const duration = ((Date.now() - recordStartTime) / 1000).toFixed(1)
+                const distance = startPos.distanceTo(window.bot.entity.position)
+                
+                if (log) log.info(`Blinked back ${positionHistory.length} positions (${duration}s, ${distance.toFixed(1)} blocks)`)
             }
 
-            // Clear history after teleport
+            // Clear history after short delay
             setTimeout(() => {
                 positionHistory = []
-                if (window.anticlient?.blinkUI) {
-                    window.anticlient.blinkUI.active = false
-                }
             }, 100)
         }
     })

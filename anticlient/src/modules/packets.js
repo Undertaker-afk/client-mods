@@ -122,7 +122,7 @@ export const loadPacketsModules = () => {
         randomJitter: 0, // Random jitter in ms (0-100)
         burstMode: false, // Send all delayed packets at once
         burstInterval: 1000, // ms between bursts
-        onHUD: false // Show on HUD overlay
+        onHUD: true // Always show on HUD overlay
     })
 
     let outgoingQueue = []
