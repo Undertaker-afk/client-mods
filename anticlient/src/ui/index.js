@@ -25,10 +25,17 @@ export const initUI = () => {
         // Show/hide mouse cursor by managing activeModalStack
         if (window.activeModalStack) {
             if (isOpening) {
-                window.activeModalStack.push('anticlient-menu')
+                // Push a proper modal object with reactType property
+                const modalObject = {
+                    reactType: 'AnticlientMenu',
+                    id: 'anticlient-menu'
+                }
+                window.activeModalStack.push(modalObject)
             } else {
                 // Remove our modal from the stack
-                const index = window.activeModalStack.indexOf('anticlient-menu')
+                const index = window.activeModalStack.findIndex(modal => 
+                    modal && modal.id === 'anticlient-menu'
+                )
                 if (index > -1) {
                     window.activeModalStack.splice(index, 1)
                 }

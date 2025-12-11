@@ -2024,9 +2024,15 @@ var initUI = () => {
     uiRoot.style.display = isOpening ? "block" : "none";
     if (window.activeModalStack) {
       if (isOpening) {
-        window.activeModalStack.push("anticlient-menu");
+        const modalObject = {
+          reactType: "AnticlientMenu",
+          id: "anticlient-menu"
+        };
+        window.activeModalStack.push(modalObject);
       } else {
-        const index = window.activeModalStack.indexOf("anticlient-menu");
+        const index = window.activeModalStack.findIndex(
+          (modal) => modal && modal.id === "anticlient-menu"
+        );
         if (index > -1) {
           window.activeModalStack.splice(index, 1);
         }
