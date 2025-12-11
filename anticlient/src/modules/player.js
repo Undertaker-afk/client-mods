@@ -206,15 +206,34 @@ export const loadPlayerModules = () => {
     })
     let chestWindow = null
     let stealing = false
+    let chestStealerListenersAdded = false
     
     chestStealer.onToggle = (enabled) => {
-        if (enabled && window.bot) {
+        const log = window.anticlientLogger?.module('ChestStealer')
+        
+        if (enabled && window.bot && !chestStealerListenersAdded) {
+            chestStealerListenersAdded = true
+            
             // Listen for window open events
-            window.bot.on('windowOpen', (window) => {
-                if (window.type === 'chest' || window.type === 'generic_9x3' || window.type === 'generic_9x6') {
-                    chestWindow = window
+            window.bot.on('windowOpen', (win) => {
+                // Guard against null/undefined window or slots
+                if (!win || !win.slots) {
+                    if (log) log.warn('Window opened but slots not ready')
+                    return
+                }
+                
+                if (!chestStealer.enabled) return
+                
+                if (win.type === 'chest' || win.type === 'generic_9x3' || win.type === 'generic_9x6' || 
+                    win.type === 'minecraft:chest' || win.type === 'minecraft:generic_9x3' || win.type === 'minecraft:generic_9x6') {
+                    chestWindow = win
                     stealing = true
-                    stealFromChest(window.bot, window)
+                    // Delay stealing to ensure window is fully loaded
+                    setTimeout(() => {
+                        if (chestStealer.enabled && stealing && chestWindow) {
+                            stealFromChest(window.bot, chestWindow)
+                        }
+                    }, 100)
                 }
             })
             
@@ -222,16 +241,30 @@ export const loadPlayerModules = () => {
                 chestWindow = null
                 stealing = false
             })
+            
+            if (log) log.info('Chest Stealer enabled')
+        } else if (!enabled) {
+            chestWindow = null
+            stealing = false
+            if (log) log.info('Chest Stealer disabled')
         }
     }
     
-    const stealFromChest = async (bot, window) => {
-        if (!chestStealer.enabled || !stealing) return
+    const stealFromChest = async (bot, win) => {
+        if (!chestStealer.enabled || !stealing || !win || !win.slots) return
+        
+        const log = window.anticlientLogger?.module('ChestStealer')
         
         // Get all items in chest (slots 0 to window.inventoryStart-1)
-        const chestSlots = window.inventoryStart || 54
+        const chestSlots = win.inventoryStart || 27 // Default to single chest
+        
+        if (log) log.info(`Stealing from chest (${chestSlots} slots)`)
+        
         for (let slot = 0; slot < chestSlots; slot++) {
-            const item = window.slots[slot]
+            // Re-check window validity each iteration
+            if (!chestStealer.enabled || !stealing || !win || !win.slots) break
+            
+            const item = win.slots[slot]
             if (!item || item.name === 'air') continue
             
             // Check filter
@@ -243,13 +276,19 @@ export const loadPlayerModules = () => {
             // Click to take item
             try {
                 await new Promise(resolve => setTimeout(resolve, chestStealer.settings.delay))
-                bot.clickWindow(slot, 0, 0) // Left click
+                
+                // Check if window is still valid before clicking
+                if (!bot || !win || !chestStealer.enabled) break
+                
+                bot.clickWindow(slot, 0, 0) // Left click (shift-click to move directly)
                 
                 if (!chestStealer.settings.takeAll) break // Take one item only
             } catch (e) {
-                // Ignore errors
+                if (log) log.warn(`Error stealing item: ${e.message}`)
             }
         }
+        
+        if (log) log.info('Finished stealing from chest')
     }
     
     registerModule(chestStealer)

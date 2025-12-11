@@ -1686,26 +1686,46 @@ var loadPlayerModules = () => {
   });
   let chestWindow = null;
   let stealing = false;
+  let chestStealerListenersAdded = false;
   chestStealer.onToggle = (enabled) => {
-    if (enabled && window.bot) {
-      window.bot.on("windowOpen", (window2) => {
-        if (window2.type === "chest" || window2.type === "generic_9x3" || window2.type === "generic_9x6") {
-          chestWindow = window2;
+    const log = window.anticlientLogger?.module("ChestStealer");
+    if (enabled && window.bot && !chestStealerListenersAdded) {
+      chestStealerListenersAdded = true;
+      window.bot.on("windowOpen", (win) => {
+        if (!win || !win.slots) {
+          if (log) log.warn("Window opened but slots not ready");
+          return;
+        }
+        if (!chestStealer.enabled) return;
+        if (win.type === "chest" || win.type === "generic_9x3" || win.type === "generic_9x6" || win.type === "minecraft:chest" || win.type === "minecraft:generic_9x3" || win.type === "minecraft:generic_9x6") {
+          chestWindow = win;
           stealing = true;
-          stealFromChest(window2.bot, window2);
+          setTimeout(() => {
+            if (chestStealer.enabled && stealing && chestWindow) {
+              stealFromChest(window.bot, chestWindow);
+            }
+          }, 100);
         }
       });
       window.bot.on("windowClose", () => {
         chestWindow = null;
         stealing = false;
       });
+      if (log) log.info("Chest Stealer enabled");
+    } else if (!enabled) {
+      chestWindow = null;
+      stealing = false;
+      if (log) log.info("Chest Stealer disabled");
     }
   };
-  const stealFromChest = async (bot, window2) => {
-    if (!chestStealer.enabled || !stealing) return;
-    const chestSlots = window2.inventoryStart || 54;
+  const stealFromChest = async (bot, win) => {
+    if (!chestStealer.enabled || !stealing || !win || !win.slots) return;
+    const log = window.anticlientLogger?.module("ChestStealer");
+    const chestSlots = win.inventoryStart || 27;
+    if (log) log.info(`Stealing from chest (${chestSlots} slots)`);
     for (let slot = 0; slot < chestSlots; slot++) {
-      const item = window2.slots[slot];
+      if (!chestStealer.enabled || !stealing || !win || !win.slots) break;
+      const item = win.slots[slot];
       if (!item || item.name === "air") continue;
       if (chestStealer.settings.filter.length > 0) {
         const matches = chestStealer.settings.filter.some((f) => item.name.includes(f));
@@ -1713,11 +1733,14 @@ var loadPlayerModules = () => {
       }
       try {
         await new Promise((resolve) => setTimeout(resolve, chestStealer.settings.delay));
+        if (!bot || !win || !chestStealer.enabled) break;
         bot.clickWindow(slot, 0, 0);
         if (!chestStealer.settings.takeAll) break;
       } catch (e) {
+        if (log) log.warn(`Error stealing item: ${e.message}`);
       }
     }
+    if (log) log.info("Finished stealing from chest");
   };
   registerModule(chestStealer);
   const packetMine = new Module("packetmine", "Packet Mine", "Player", "Mine blocks without holding mouse button", {
