@@ -9,6 +9,8 @@ export const loadPlayerModules = () => {
         preferGoldenApple: true
     })
     autoEat.onTick = (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        
         const needsFood = bot.food < autoEat.settings.healthThreshold || 
                          (bot.foodSaturation !== undefined && bot.foodSaturation < autoEat.settings.saturationThreshold)
         
@@ -58,6 +60,8 @@ export const loadPlayerModules = () => {
     })
     let totemTick = 0
     autoTotem.onTick = (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        
         totemTick++
         if (totemTick % autoTotem.settings.checkInterval !== 0) return
         
@@ -82,6 +86,7 @@ export const loadPlayerModules = () => {
     })
     let sorting = false
     inventorySorter.onTick = async (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
         if (!inventorySorter.settings.enabled || sorting || bot.currentWindow) return
         
         sorting = true
@@ -145,6 +150,8 @@ export const loadPlayerModules = () => {
     let refillTick = 0
     let refilling = false
     autoRefill.onTick = async (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        
         refillTick++
         if (refillTick % 20 !== 0 || refilling || bot.currentWindow) return // Check every second
         

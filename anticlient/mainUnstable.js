@@ -221,6 +221,7 @@ var loadCombatModules = () => {
   });
   let totemTick = 0;
   autoTotem.onTick = (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     totemTick++;
     if (totemTick % autoTotem.settings.checkInterval !== 0) return;
     const needsTotem = bot.health <= autoTotem.settings.healthThreshold;
@@ -240,6 +241,7 @@ var loadCombatModules = () => {
     // 'soup' | 'potion' | 'both'
   });
   autoSoup.onTick = (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     if (bot.health <= autoSoup.settings.healthThreshold && !autoSoup.eating) {
       let item = null;
       if (autoSoup.settings.itemType === "soup" || autoSoup.settings.itemType === "both") {
@@ -286,6 +288,7 @@ var loadCombatModules = () => {
     return 0;
   };
   autoArmor.onTick = async (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     aaTick++;
     if (aaTick % autoArmor.settings.checkInterval !== 0 || equippingArmor) return;
     equippingArmor = true;
@@ -690,6 +693,7 @@ var loadMovementModules = () => {
   registerModule(highJump);
   const scaffold = new Module("scaffold", "Scaffold", "Movement", "Place blocks under you", {});
   scaffold.onTick = (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     const pos = bot.entity.position;
     const blockBelow = bot.blockAt(pos.offset(0, -1, 0));
     if (blockBelow && blockBelow.boundingBox === "empty") {
@@ -845,6 +849,7 @@ var loadMovementModules = () => {
     speed: 1
   });
   elytraFly.onTick = (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     if (elytraFly.settings.autoActivate && bot.entity.velocity.y < -0.5) {
       const chestplate = bot.inventory.slots[6];
       if (chestplate && chestplate.name === "elytra") {
@@ -874,6 +879,7 @@ var loadMovementModules = () => {
   scaffold.settings.range = 5;
   scaffold.settings.sneakOnly = false;
   scaffold.onTick = (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     if (scaffold.settings.sneakOnly && !bot.controlState.sneak) return;
     const pos = bot.entity.position;
     const blockBelow = bot.blockAt(pos.offset(0, -1, 0));
@@ -1532,6 +1538,7 @@ var loadPlayerModules = () => {
     preferGoldenApple: true
   });
   autoEat.onTick = (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     const needsFood = bot.food < autoEat.settings.healthThreshold || bot.foodSaturation !== void 0 && bot.foodSaturation < autoEat.settings.saturationThreshold;
     if (needsFood && !autoEat.eating) {
       let food = null;
@@ -1563,6 +1570,7 @@ var loadPlayerModules = () => {
   });
   let totemTick = 0;
   autoTotem.onTick = (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     totemTick++;
     if (totemTick % autoTotem.settings.checkInterval !== 0) return;
     const needsTotem = bot.health <= autoTotem.settings.healthThreshold;
@@ -1584,6 +1592,7 @@ var loadPlayerModules = () => {
   });
   let sorting = false;
   inventorySorter.onTick = async (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     if (!inventorySorter.settings.enabled || sorting || bot.currentWindow) return;
     sorting = true;
     try {
@@ -1634,6 +1643,7 @@ var loadPlayerModules = () => {
   let refillTick = 0;
   let refilling = false;
   autoRefill.onTick = async (bot) => {
+    if (!bot.inventory || !bot.inventory.slots) return;
     refillTick++;
     if (refillTick % 20 !== 0 || refilling || bot.currentWindow) return;
     refilling = true;

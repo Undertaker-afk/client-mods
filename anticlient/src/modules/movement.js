@@ -293,6 +293,8 @@ export const loadMovementModules = () => {
     // -- Scaffold --
     const scaffold = new Module('scaffold', 'Scaffold', 'Movement', 'Place blocks under you', {})
     scaffold.onTick = (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        
         const pos = bot.entity.position
         const blockBelow = bot.blockAt(pos.offset(0, -1, 0))
         if (blockBelow && blockBelow.boundingBox === 'empty') {
@@ -491,6 +493,8 @@ export const loadMovementModules = () => {
         speed: 1.0
     })
     elytraFly.onTick = (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        
         if (elytraFly.settings.autoActivate && bot.entity.velocity.y < -0.5) {
             // Check if elytra is equipped
             const chestplate = bot.inventory.slots[6] // Chest slot
@@ -528,6 +532,7 @@ export const loadMovementModules = () => {
     scaffold.settings.range = 5
     scaffold.settings.sneakOnly = false
     scaffold.onTick = (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
         if (scaffold.settings.sneakOnly && !bot.controlState.sneak) return
         
         const pos = bot.entity.position

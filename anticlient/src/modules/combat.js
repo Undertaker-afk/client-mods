@@ -194,6 +194,8 @@ export const loadCombatModules = () => {
     })
     let totemTick = 0
     autoTotem.onTick = (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        
         totemTick++
         if (totemTick % autoTotem.settings.checkInterval !== 0) return
         
@@ -217,6 +219,8 @@ export const loadCombatModules = () => {
         itemType: 'soup' // 'soup' | 'potion' | 'both'
     })
     autoSoup.onTick = (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        
         if (bot.health <= autoSoup.settings.healthThreshold && !autoSoup.eating) {
             let item = null
             if (autoSoup.settings.itemType === 'soup' || autoSoup.settings.itemType === 'both') {
@@ -275,6 +279,8 @@ export const loadCombatModules = () => {
     }
     
     autoArmor.onTick = async (bot) => {
+        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        
         aaTick++
         if (aaTick % autoArmor.settings.checkInterval !== 0 || equippingArmor) return
         
