@@ -2,7 +2,7 @@
     "packages": [
         {
             "name": "anticlient",
-            "version": "1.8.0",
+            "version": "1.8.5",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
             "description": "Hacked client for 2b2t \nLatest: Inventory Walk (move in GUIs), Portal GUI (open inv in portals), API Docs button"
