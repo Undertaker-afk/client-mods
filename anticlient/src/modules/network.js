@@ -3,7 +3,7 @@ import { Module, registerModule } from '../core/Module.js'
 
 export const loadNetworkModules = () => {
     // -- Wireless Integration --
-    const wireless = new Module('wireless', 'Wireless Integration', 'Network', 'Connect to desktop bridge', {
+    const wireless = new Module('wireless', 'Wireless Integration', 'Settings', 'Connect to desktop bridge', {
         enabled: false,
         host: 'localhost',
         port: 8080,

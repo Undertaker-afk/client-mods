@@ -1371,7 +1371,7 @@ var loadWorldModules = () => {
 
 // src/modules/network.js
 var loadNetworkModules = () => {
-  const wireless = new Module("wireless", "Wireless Integration", "Network", "Connect to desktop bridge", {
+  const wireless = new Module("wireless", "Wireless Integration", "Settings", "Connect to desktop bridge", {
     enabled: false,
     host: "localhost",
     port: 8080,
@@ -1501,7 +1501,6 @@ var loadNetworkModules = () => {
 
 // src/modules/client.js
 var loadClientModules = () => {
-  loadNetworkModules();
   const settings = new Module("client_settings", "Client Settings", "Settings", "Client configuration", {
     theme: "Default",
     repo: "Undertaker-afk/client-mods"
