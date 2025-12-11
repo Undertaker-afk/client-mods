@@ -20,31 +20,197 @@ export const loadRenderModules = () => {
     }, {
         boxType: { type: 'dropdown', options: ['2D', '3D'] }
     })
+    
+    // Track entities we've applied effects to for cleanup
+    let espTrackedEntities = new Set()
+    let espCleanupInterval = null
+    
     esp.onToggle = (enabled) => {
         if (!window.anticlient) window.anticlient = { visuals: {} }
         if (!window.anticlient.visuals) window.anticlient.visuals = {}
-        window.anticlient.visuals.esp = enabled
-        window.anticlient.visuals.espSettings = esp.settings
+        
+        if (enabled) {
+            window.anticlient.visuals.esp = true
+            window.anticlient.visuals.espSettings = esp.settings
+            window.anticlient.visuals.espEntities = []
+            
+            // Setup cleanup interval to remove stale entities
+            espCleanupInterval = setInterval(() => {
+                if (!esp.enabled) return
+                cleanupESP()
+            }, 1000)
+        } else {
+            // Full cleanup when disabled
+            window.anticlient.visuals.esp = false
+            window.anticlient.visuals.espEntities = []
+            
+            // Clear tracked entities and remove any visual effects
+            cleanupESP(true)
+            espTrackedEntities.clear()
+            
+            if (espCleanupInterval) {
+                clearInterval(espCleanupInterval)
+                espCleanupInterval = null
+            }
+        }
     }
+    
+    // Cleanup function - removes effects from entities that no longer exist
+    const cleanupESP = (force = false) => {
+        if (!window.bot) return
+        
+        const currentEntities = new Set(Object.keys(window.bot.entities || {}).map(Number))
+        
+        // Find entities that were tracked but no longer exist
+        for (const entityId of espTrackedEntities) {
+            if (!currentEntities.has(entityId) || force) {
+                // Entity no longer exists - remove from tracking
+                espTrackedEntities.delete(entityId)
+                
+                // If renderer has cleanup hook, call it
+                if (window.anticlient?.cleanupEntityVisual) {
+                    window.anticlient.cleanupEntityVisual(entityId)
+                }
+            }
+        }
+        
+        // Update visual data to only include existing entities
+        if (window.anticlient?.visuals?.espEntities) {
+            window.anticlient.visuals.espEntities = window.anticlient.visuals.espEntities.filter(
+                e => currentEntities.has(e.id)
+            )
+        }
+    }
+    
+    esp.onTick = (bot) => {
+        if (!bot || !bot.entities) return
+        
+        const entities = []
+        const playerPos = bot.entity?.position
+        if (!playerPos) return
+        
+        for (const [id, entity] of Object.entries(bot.entities)) {
+            if (!entity || !entity.position) continue
+            if (entity === bot.entity) continue // Skip self
+            
+            const entityId = parseInt(id)
+            const isPlayer = entity.type === 'player'
+            const isMob = entity.type === 'mob' || entity.type === 'hostile' || entity.type === 'animal'
+            
+            if (!isPlayer && !isMob) continue
+            
+            const distance = playerPos.distanceTo(entity.position)
+            
+            // Get entity dimensions for box rendering
+            let width = 0.6
+            let height = 1.8
+            if (entity.height) height = entity.height
+            if (entity.width) width = entity.width
+            
+            const entityData = {
+                id: entityId,
+                type: entity.type,
+                name: entity.username || entity.displayName || entity.name || 'Unknown',
+                position: {
+                    x: entity.position.x,
+                    y: entity.position.y,
+                    z: entity.position.z
+                },
+                width: width,
+                height: height,
+                distance: distance,
+                health: entity.health || 20,
+                maxHealth: entity.maxHealth || 20,
+                isPlayer: isPlayer,
+                color: isPlayer ? esp.settings.playerColor : esp.settings.mobColor,
+                yaw: entity.yaw || 0,
+                pitch: entity.pitch || 0
+            }
+            
+            entities.push(entityData)
+            espTrackedEntities.add(entityId)
+        }
+        
+        // Update visuals data
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.espEntities = entities
+            window.anticlient.visuals.espSettings = esp.settings
+        }
+    }
+    
     esp.onSettingChanged = (key, newValue) => {
         if (window.anticlient?.visuals) {
             window.anticlient.visuals.espSettings = esp.settings
         }
     }
+    
+    // Expose cleanup function for external use
+    esp.cleanup = () => cleanupESP(true)
+    
     registerModule(esp)
 
     // -- Tracers (Enhanced) --
     const tracers = new Module('tracers', 'Tracers', 'Render', 'Draw lines to entities', { 
         color: '#ffffff',
+        playerColor: '#00ffff',
+        mobColor: '#ff5555',
         showDistance: true,
-        maxDistance: 64
+        maxDistance: 64,
+        playersOnly: false
     })
+    
     tracers.onToggle = (enabled) => {
         if (!window.anticlient) window.anticlient = { visuals: {} }
         if (!window.anticlient.visuals) window.anticlient.visuals = {}
         window.anticlient.visuals.tracers = enabled
         window.anticlient.visuals.tracersSettings = tracers.settings
+        
+        if (!enabled) {
+            // Cleanup tracer data
+            window.anticlient.visuals.tracersEntities = []
+        }
     }
+    
+    tracers.onTick = (bot) => {
+        if (!bot || !bot.entities || !bot.entity?.position) return
+        
+        const entities = []
+        const playerPos = bot.entity.position
+        const eyePos = playerPos.offset(0, 1.62, 0)
+        
+        for (const [id, entity] of Object.entries(bot.entities)) {
+            if (!entity || !entity.position) continue
+            if (entity === bot.entity) continue
+            
+            const isPlayer = entity.type === 'player'
+            const isMob = entity.type === 'mob' || entity.type === 'hostile' || entity.type === 'animal'
+            
+            if (tracers.settings.playersOnly && !isPlayer) continue
+            if (!isPlayer && !isMob) continue
+            
+            const distance = playerPos.distanceTo(entity.position)
+            if (distance > tracers.settings.maxDistance) continue
+            
+            entities.push({
+                id: parseInt(id),
+                name: entity.username || entity.name || 'Unknown',
+                from: { x: eyePos.x, y: eyePos.y, z: eyePos.z },
+                to: { 
+                    x: entity.position.x, 
+                    y: entity.position.y + (entity.height || 1.8) / 2, 
+                    z: entity.position.z 
+                },
+                distance: distance,
+                color: isPlayer ? tracers.settings.playerColor : tracers.settings.mobColor,
+                isPlayer: isPlayer
+            })
+        }
+        
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.tracersEntities = entities
+        }
+    }
+    
     tracers.onSettingChanged = () => {
         if (window.anticlient?.visuals) {
             window.anticlient.visuals.tracersSettings = tracers.settings
@@ -56,14 +222,55 @@ export const loadRenderModules = () => {
     const nameTags = new Module('nametags', 'NameTags', 'Render', 'Show entity names above heads', {
         range: 64,
         showHealth: true,
-        showDistance: true
+        showDistance: true,
+        scale: 1.0,
+        background: true
     })
+    
     nameTags.onToggle = (enabled) => {
         if (!window.anticlient) window.anticlient = { visuals: {} }
         if (!window.anticlient.visuals) window.anticlient.visuals = {}
         window.anticlient.visuals.nameTags = enabled
         window.anticlient.visuals.nameTagsSettings = nameTags.settings
+        
+        if (!enabled) {
+            window.anticlient.visuals.nameTagsEntities = []
+        }
     }
+    
+    nameTags.onTick = (bot) => {
+        if (!bot || !bot.entities || !bot.entity?.position) return
+        
+        const entities = []
+        const playerPos = bot.entity.position
+        
+        for (const [id, entity] of Object.entries(bot.entities)) {
+            if (!entity || !entity.position) continue
+            if (entity === bot.entity) continue
+            if (entity.type !== 'player') continue
+            
+            const distance = playerPos.distanceTo(entity.position)
+            if (distance > nameTags.settings.range) continue
+            
+            entities.push({
+                id: parseInt(id),
+                name: entity.username || entity.displayName || 'Unknown',
+                position: {
+                    x: entity.position.x,
+                    y: entity.position.y + (entity.height || 1.8) + 0.5,
+                    z: entity.position.z
+                },
+                health: entity.health || 20,
+                maxHealth: entity.maxHealth || 20,
+                distance: distance
+            })
+        }
+        
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.nameTagsEntities = entities
+        }
+    }
+    
     nameTags.onSettingChanged = () => {
         if (window.anticlient?.visuals) {
             window.anticlient.visuals.nameTagsSettings = nameTags.settings
@@ -542,5 +749,331 @@ export const loadRenderModules = () => {
     }
 
     registerModule(trajectory)
+
+    // -- Waypoints --
+    const waypoints = new Module('waypoints', 'Waypoints', 'Render', 'Save and display locations in the world', {
+        showDistance: true,
+        showName: true,
+        showCoords: false,
+        beamHeight: 256,
+        maxRenderDistance: 1000
+    })
+
+    // Waypoint storage
+    if (!window.anticlient) window.anticlient = {}
+    if (!window.anticlient.waypoints) window.anticlient.waypoints = []
+
+    waypoints.addWaypoint = (name, pos, color = '#00ff00') => {
+        const wp = {
+            id: Date.now(),
+            name: name,
+            x: Math.floor(pos.x),
+            y: Math.floor(pos.y),
+            z: Math.floor(pos.z),
+            color: color,
+            dimension: window.bot?.game?.dimension || 'overworld'
+        }
+        window.anticlient.waypoints.push(wp)
+        
+        const log = window.anticlientLogger?.module('Waypoints')
+        if (log) log.info(`Added waypoint "${name}" at ${wp.x}, ${wp.y}, ${wp.z}`)
+        
+        return wp
+    }
+
+    waypoints.removeWaypoint = (id) => {
+        const index = window.anticlient.waypoints.findIndex(w => w.id === id)
+        if (index !== -1) {
+            const wp = window.anticlient.waypoints.splice(index, 1)[0]
+            const log = window.anticlientLogger?.module('Waypoints')
+            if (log) log.info(`Removed waypoint "${wp.name}"`)
+            return true
+        }
+        return false
+    }
+
+    waypoints.clearWaypoints = () => {
+        window.anticlient.waypoints = []
+        const log = window.anticlientLogger?.module('Waypoints')
+        if (log) log.info('Cleared all waypoints')
+    }
+
+    waypoints.onTick = (bot) => {
+        if (!bot.entity) return
+
+        const playerPos = bot.entity.position
+        const dimension = bot.game?.dimension || 'overworld'
+
+        // Filter and calculate distances for current dimension
+        const visibleWaypoints = window.anticlient.waypoints
+            .filter(wp => wp.dimension === dimension)
+            .map(wp => {
+                const distance = Math.sqrt(
+                    Math.pow(wp.x - playerPos.x, 2) +
+                    Math.pow(wp.y - playerPos.y, 2) +
+                    Math.pow(wp.z - playerPos.z, 2)
+                )
+                return { ...wp, distance }
+            })
+            .filter(wp => wp.distance <= waypoints.settings.maxRenderDistance)
+
+        // Expose for rendering
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        window.anticlient.visuals.waypoints = {
+            enabled: true,
+            waypoints: visibleWaypoints,
+            settings: waypoints.settings
+        }
+    }
+
+    waypoints.onToggle = (enabled) => {
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        if (!enabled) {
+            window.anticlient.visuals.waypoints = { enabled: false }
+        }
+    }
+
+    // Add current position as waypoint (keybind action)
+    waypoints.addCurrentPosition = (name) => {
+        if (window.bot && window.bot.entity) {
+            return waypoints.addWaypoint(name || `Waypoint ${window.anticlient.waypoints.length + 1}`, window.bot.entity.position)
+        }
+        return null
+    }
+
+    registerModule(waypoints)
+
+    // -- Chunk Borders --
+    const chunkBorders = new Module('chunkborders', 'Chunk Borders', 'Render', 'Show chunk boundaries', {
+        color: '#ffff00',
+        opacity: 0.5,
+        showGrid: true, // Show 16x16 grid
+        showSlimeChunks: false, // Highlight slime chunks
+        slimeColor: '#00ff00',
+        height: 256 // Render height
+    })
+
+    chunkBorders.onTick = (bot) => {
+        if (!bot.entity) return
+
+        const playerPos = bot.entity.position
+        
+        // Calculate current chunk
+        const chunkX = Math.floor(playerPos.x / 16) * 16
+        const chunkZ = Math.floor(playerPos.z / 16) * 16
+
+        // Check if slime chunk (simplified - actual formula is more complex)
+        const isSlimeChunk = chunkBorders.settings.showSlimeChunks && 
+            ((chunkX / 16 + chunkZ / 16) % 10 === 0) // Simplified check
+
+        // Expose chunk border data for rendering
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        window.anticlient.visuals.chunkBorders = {
+            enabled: true,
+            chunkX: chunkX,
+            chunkZ: chunkZ,
+            color: isSlimeChunk ? chunkBorders.settings.slimeColor : chunkBorders.settings.color,
+            opacity: chunkBorders.settings.opacity,
+            showGrid: chunkBorders.settings.showGrid,
+            isSlimeChunk: isSlimeChunk,
+            height: chunkBorders.settings.height,
+            // Chunk corner positions
+            corners: [
+                { x: chunkX, z: chunkZ },
+                { x: chunkX + 16, z: chunkZ },
+                { x: chunkX + 16, z: chunkZ + 16 },
+                { x: chunkX, z: chunkZ + 16 }
+            ]
+        }
+    }
+
+    chunkBorders.onToggle = (enabled) => {
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        if (!enabled) {
+            window.anticlient.visuals.chunkBorders = { enabled: false }
+        }
+    }
+
+    registerModule(chunkBorders)
+
+    // -- Light Overlay --
+    const lightOverlay = new Module('lightoverlay', 'Light Overlay', 'Render', 'Show where mobs can spawn', {
+        color: '#ff0000', // Red for dangerous
+        safeColor: '#00ff00', // Green for safe
+        range: 16, // Block range to check
+        showSafe: false, // Also show safe blocks
+        minLightLevel: 0, // Light level for mob spawning (0 in 1.18+)
+        updateInterval: 500 // ms between updates
+    })
+
+    let lightOverlayBlocks = []
+    let lastLightUpdate = 0
+
+    lightOverlay.onTick = (bot) => {
+        if (!bot.entity) return
+
+        const now = Date.now()
+        if (now - lastLightUpdate < lightOverlay.settings.updateInterval) {
+            // Just expose cached data
+            if (window.anticlient?.visuals) {
+                window.anticlient.visuals.lightOverlay = {
+                    enabled: true,
+                    blocks: lightOverlayBlocks,
+                    settings: lightOverlay.settings
+                }
+            }
+            return
+        }
+        lastLightUpdate = now
+
+        const playerPos = bot.entity.position
+        const range = lightOverlay.settings.range
+        const minLight = lightOverlay.settings.minLightLevel
+
+        lightOverlayBlocks = []
+
+        // Scan blocks around player
+        for (let x = -range; x <= range; x++) {
+            for (let z = -range; z <= range; z++) {
+                // Only check surface blocks (walk down from player height)
+                for (let y = 2; y >= -2; y--) {
+                    const checkPos = playerPos.offset(x, y, z)
+                    const block = bot.blockAt(checkPos)
+                    const blockAbove = bot.blockAt(checkPos.offset(0, 1, 0))
+                    const blockBelow = bot.blockAt(checkPos.offset(0, -1, 0))
+
+                    if (!block || !blockAbove || !blockBelow) continue
+
+                    // Check if this is a valid spawn location
+                    // Must be: solid block below, air at feet and head level
+                    if (blockBelow.boundingBox !== 'empty' && 
+                        block.boundingBox === 'empty' && 
+                        blockAbove.boundingBox === 'empty') {
+                        
+                        // Get light level
+                        const lightLevel = block.light || 0
+
+                        if (lightLevel <= minLight) {
+                            // Dangerous - mobs can spawn
+                            lightOverlayBlocks.push({
+                                x: Math.floor(checkPos.x),
+                                y: Math.floor(checkPos.y),
+                                z: Math.floor(checkPos.z),
+                                light: lightLevel,
+                                safe: false,
+                                color: lightOverlay.settings.color
+                            })
+                        } else if (lightOverlay.settings.showSafe) {
+                            // Safe
+                            lightOverlayBlocks.push({
+                                x: Math.floor(checkPos.x),
+                                y: Math.floor(checkPos.y),
+                                z: Math.floor(checkPos.z),
+                                light: lightLevel,
+                                safe: true,
+                                color: lightOverlay.settings.safeColor
+                            })
+                        }
+                        break // Found surface, move to next column
+                    }
+                }
+            }
+        }
+
+        // Expose for rendering
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        window.anticlient.visuals.lightOverlay = {
+            enabled: true,
+            blocks: lightOverlayBlocks,
+            settings: lightOverlay.settings
+        }
+    }
+
+    lightOverlay.onToggle = (enabled) => {
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        if (!enabled) {
+            lightOverlayBlocks = []
+            window.anticlient.visuals.lightOverlay = { enabled: false }
+        }
+    }
+
+    registerModule(lightOverlay)
+
+    // -- Reach Display --
+    const reachDisplay = new Module('reachdisplay', 'Reach Display', 'Render', 'Show attack reach information', {
+        showCircle: true,
+        showDistance: true,
+        color: '#00ff00',
+        warningColor: '#ffff00',
+        dangerColor: '#ff0000',
+        reachDistance: 3.0 // Default MC reach
+    })
+
+    reachDisplay.onTick = (bot) => {
+        if (!bot.entity) return
+
+        // Find nearest entity
+        const target = bot.nearestEntity(e => 
+            (e.type === 'player' || e.type === 'mob') && 
+            e !== bot.entity
+        )
+
+        let targetDistance = null
+        let inReach = false
+        let color = reachDisplay.settings.color
+
+        if (target) {
+            targetDistance = bot.entity.position.distanceTo(target.position)
+            inReach = targetDistance <= reachDisplay.settings.reachDistance
+            
+            // Color based on distance
+            if (targetDistance <= reachDisplay.settings.reachDistance) {
+                color = reachDisplay.settings.color // In reach - green
+            } else if (targetDistance <= reachDisplay.settings.reachDistance + 1) {
+                color = reachDisplay.settings.warningColor // Close - yellow
+            } else {
+                color = reachDisplay.settings.dangerColor // Out of reach - red
+            }
+        }
+
+        // Expose for rendering
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        window.anticlient.visuals.reachDisplay = {
+            enabled: true,
+            targetDistance: targetDistance,
+            inReach: inReach,
+            reachDistance: reachDisplay.settings.reachDistance,
+            color: color,
+            showCircle: reachDisplay.settings.showCircle,
+            showDistance: reachDisplay.settings.showDistance,
+            target: target ? {
+                position: target.position,
+                name: target.username || target.name || 'Entity'
+            } : null
+        }
+    }
+
+    reachDisplay.onToggle = (enabled) => {
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        if (!enabled) {
+            window.anticlient.visuals.reachDisplay = { enabled: false }
+        }
+    }
+
+    registerModule(reachDisplay)
 }
 

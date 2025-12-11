@@ -2,10 +2,10 @@
     "packages": [
         {
             "name": "anticlient",
-            "version": "1.8.5",
+            "version": "1.9.0",
             "scriptMainUnstable": true,
             "threeJsBackend": true,
-            "description": "Hacked client for 2b2t \nLatest: Inventory Walk (move in GUIs), Portal GUI (open inv in portals), API Docs button"
+            "description": "Hacked client for 2b2t \nLatest: Freecam Interaction, Bow Aimbot, W-Tap, Phase, Long Jump, Boat Fly, Safe Walk, Waypoints, Chunk Borders, Light Overlay, Trajectory, Search, Timer, Ping Spoof, Middle Click Friend"
         }
     ]
 }

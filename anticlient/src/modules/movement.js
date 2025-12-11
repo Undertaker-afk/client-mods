@@ -41,7 +41,9 @@ export const loadMovementModules = () => {
         speed: 1.0,
         fastSpeed: 3.0,
         slowSpeed: 0.3,
-        smoothing: 0.5
+        smoothing: 0.5,
+        interaction: true, // Allow interacting with blocks from freecam position
+        interactionRange: 6.0 // Max range for interaction
     })
 
     let freecamPosition = null
@@ -49,9 +51,73 @@ export const loadMovementModules = () => {
     let freecamPitch = 0
     let freecamVelocity = { x: 0, y: 0, z: 0 }
     let originalPosition = null
+    let interactionListener = null
+
+    // Raycast from freecam position to find block being looked at
+    freecam.getTargetBlock = () => {
+        if (!freecamPosition || !window.bot) return null
+        
+        const bot = window.bot
+        const Vec3 = bot.entity.position.constructor
+        
+        // Eye position in freecam
+        const eyePos = new Vec3(freecamPosition.x, freecamPosition.y + 1.62, freecamPosition.z)
+        
+        // Direction vector from yaw/pitch
+        const dirX = -Math.sin(freecamYaw) * Math.cos(freecamPitch)
+        const dirY = -Math.sin(freecamPitch)
+        const dirZ = -Math.cos(freecamYaw) * Math.cos(freecamPitch)
+        
+        const direction = new Vec3(dirX, dirY, dirZ)
+        const range = freecam.settings.interactionRange
+        
+        // Simple raycast - check blocks along ray
+        for (let dist = 0.5; dist <= range; dist += 0.25) {
+            const checkPos = eyePos.offset(dirX * dist, dirY * dist, dirZ * dist)
+            const block = bot.blockAt(checkPos)
+            
+            if (block && block.boundingBox !== 'empty' && block.name !== 'air') {
+                return {
+                    block: block,
+                    position: block.position.clone(),
+                    distance: dist
+                }
+            }
+        }
+        
+        return null
+    }
+
+    // Get block face from look direction
+    freecam.getBlockFace = (blockPos) => {
+        if (!freecamPosition) return { x: 0, y: 1, z: 0 }
+        
+        const Vec3 = window.bot.entity.position.constructor
+        const eyePos = new Vec3(freecamPosition.x, freecamPosition.y + 1.62, freecamPosition.z)
+        const blockCenter = blockPos.offset(0.5, 0.5, 0.5)
+        
+        // Direction from block to camera
+        const dx = eyePos.x - blockCenter.x
+        const dy = eyePos.y - blockCenter.y
+        const dz = eyePos.z - blockCenter.z
+        
+        // Find dominant axis
+        const ax = Math.abs(dx)
+        const ay = Math.abs(dy)
+        const az = Math.abs(dz)
+        
+        if (ax > ay && ax > az) {
+            return { x: dx > 0 ? 1 : -1, y: 0, z: 0 }
+        } else if (ay > az) {
+            return { x: 0, y: dy > 0 ? 1 : -1, z: 0 }
+        } else {
+            return { x: 0, y: 0, z: dz > 0 ? 1 : -1 }
+        }
+    }
 
     freecam.onToggle = (enabled) => {
         if (!window.bot || !window.bot.entity) return
+        const log = window.anticlientLogger?.module('Freecam')
 
         if (enabled) {
             // Store original position
@@ -61,14 +127,78 @@ export const loadMovementModules = () => {
             freecamPitch = window.bot.entity.pitch
             freecamVelocity = { x: 0, y: 0, z: 0 }
 
-            console.log('[Freecam] Enabled - Camera detached from player')
+            // Setup interaction handler (click to interact from freecam position)
+            if (freecam.settings.interaction) {
+                interactionListener = (e) => {
+                    if (!freecam.enabled || !freecamPosition) return
+                    
+                    const target = freecam.getTargetBlock()
+                    if (!target) return
+                    
+                    const bot = window.bot
+                    
+                    if (e.button === 0) {
+                        // Left click - dig/break
+                        e.preventDefault()
+                        e.stopPropagation()
+                        
+                        if (log) log.info(`Freecam dig at ${target.position.x}, ${target.position.y}, ${target.position.z}`)
+                        
+                        // Start digging the block
+                        bot.dig(target.block, false).catch(err => {
+                            if (log) log.warning(`Dig failed: ${err.message}`)
+                        })
+                    } else if (e.button === 2) {
+                        // Right click - place/interact
+                        e.preventDefault()
+                        e.stopPropagation()
+                        
+                        const face = freecam.getBlockFace(target.position)
+                        
+                        if (log) log.info(`Freecam interact at ${target.position.x}, ${target.position.y}, ${target.position.z}`)
+                        
+                        // Activate block (open chest, use button, etc.)
+                        bot.activateBlock(target.block).catch(err => {
+                            // If activation fails, try to place a block
+                            if (bot.heldItem) {
+                                bot.placeBlock(target.block, new (bot.entity.position.constructor)(face.x, face.y, face.z))
+                                    .catch(() => {})
+                            }
+                        })
+                    }
+                }
+                
+                // Add listener with capture phase to intercept before game
+                document.addEventListener('mousedown', interactionListener, true)
+            }
+
+            if (log) log.info('Freecam enabled - Camera detached from player')
+            if (freecam.settings.interaction && log) {
+                log.info('Freecam interaction enabled - Click to interact from camera position')
+            }
         } else {
             // Reset camera to player position
             freecamPosition = null
             freecamVelocity = { x: 0, y: 0, z: 0 }
-            console.log('[Freecam] Disabled - Camera attached to player')
+            
+            // Remove interaction listener
+            if (interactionListener) {
+                document.removeEventListener('mousedown', interactionListener, true)
+                interactionListener = null
+            }
+            
+            // Clear visual data
+            if (window.anticlient && window.anticlient.visuals) {
+                window.anticlient.visuals.freecam = { enabled: false }
+            }
+            
+            if (log) log.info('Freecam disabled - Camera attached to player')
         }
     }
+    
+    // Expose freecam position for external use (e.g., rendering crosshair target)
+    freecam.getPosition = () => freecamPosition ? freecamPosition.clone() : null
+    freecam.getRotation = () => ({ yaw: freecamYaw, pitch: freecamPitch })
 
     freecam.onTick = (bot) => {
         if (!freecamPosition) return
@@ -146,6 +276,30 @@ export const loadMovementModules = () => {
         bot.entity.velocity.x = 0
         bot.entity.velocity.y = 0
         bot.entity.velocity.z = 0
+        
+        // Expose freecam data for visual rendering
+        if (!window.anticlient) window.anticlient = { visuals: {} }
+        if (!window.anticlient.visuals) window.anticlient.visuals = {}
+        
+        const target = freecam.settings.interaction ? freecam.getTargetBlock() : null
+        window.anticlient.visuals.freecam = {
+            enabled: true,
+            position: { x: freecamPosition.x, y: freecamPosition.y, z: freecamPosition.z },
+            yaw: freecamYaw,
+            pitch: freecamPitch,
+            targetBlock: target ? {
+                x: target.position.x,
+                y: target.position.y,
+                z: target.position.z,
+                name: target.block.name,
+                distance: target.distance
+            } : null,
+            playerPosition: originalPosition ? { 
+                x: originalPosition.x, 
+                y: originalPosition.y, 
+                z: originalPosition.z 
+            } : null
+        }
     }
 
     registerModule(freecam)
@@ -798,4 +952,258 @@ export const loadMovementModules = () => {
     }
 
     registerModule(phase)
+
+    // -- Long Jump --
+    const longJump = new Module('longjump', 'Long Jump', 'Movement', 'Enhanced horizontal jumping', {
+        boost: 1.5, // Horizontal velocity multiplier
+        mode: 'Boost', // 'Boost' | 'Glide' | 'NCP'
+        autoJump: false // Auto jump when on ground
+    }, {
+        mode: { type: 'dropdown', options: ['Boost', 'Glide', 'NCP'] }
+    })
+
+    let longJumpActive = false
+
+    longJump.onTick = (bot) => {
+        if (!bot.entity) return
+
+        // Auto jump
+        if (longJump.settings.autoJump && bot.entity.onGround && bot.controlState.forward) {
+            bot.setControlState('jump', true)
+            setTimeout(() => bot.setControlState('jump', false), 50)
+        }
+
+        // Apply boost when jumping
+        if (!bot.entity.onGround && bot.controlState.jump && !longJumpActive) {
+            longJumpActive = true
+            const yaw = bot.entity.yaw
+
+            if (longJump.settings.mode === 'Boost') {
+                // Simple velocity boost
+                bot.entity.velocity.x += -Math.sin(yaw) * longJump.settings.boost * 0.5
+                bot.entity.velocity.z += -Math.cos(yaw) * longJump.settings.boost * 0.5
+            } else if (longJump.settings.mode === 'Glide') {
+                // Maintain horizontal momentum longer
+                bot.entity.velocity.x = -Math.sin(yaw) * longJump.settings.boost
+                bot.entity.velocity.z = -Math.cos(yaw) * longJump.settings.boost
+                bot.entity.velocity.y = Math.max(bot.entity.velocity.y, -0.1) // Reduce fall speed
+            } else if (longJump.settings.mode === 'NCP') {
+                // NCP bypass style
+                bot.entity.velocity.x = -Math.sin(yaw) * 0.9
+                bot.entity.velocity.z = -Math.cos(yaw) * 0.9
+                bot.entity.velocity.y = 0.42
+            }
+        }
+
+        // Reset when on ground
+        if (bot.entity.onGround) {
+            longJumpActive = false
+        }
+
+        // Glide mode - maintain velocity in air
+        if (longJump.settings.mode === 'Glide' && !bot.entity.onGround && bot.controlState.forward) {
+            const yaw = bot.entity.yaw
+            const speed = longJump.settings.boost * 0.3
+            bot.entity.velocity.x = -Math.sin(yaw) * speed
+            bot.entity.velocity.z = -Math.cos(yaw) * speed
+        }
+    }
+
+    registerModule(longJump)
+
+    // -- Boat Fly --
+    const boatFly = new Module('boatfly', 'Boat Fly', 'Movement', 'Fly using boats', {
+        speed: 2.0,
+        verticalSpeed: 1.0,
+        glide: true // Glide instead of fall
+    })
+
+    boatFly.onTick = (bot) => {
+        if (!bot.entity || !bot.vehicle) return
+
+        const vehicle = bot.vehicle
+        if (!vehicle || !vehicle.name?.includes('boat')) return
+
+        const yaw = bot.entity.yaw
+        const speed = boatFly.settings.speed
+
+        // Horizontal movement
+        if (bot.controlState.forward) {
+            vehicle.velocity.x = -Math.sin(yaw) * speed
+            vehicle.velocity.z = -Math.cos(yaw) * speed
+        } else if (bot.controlState.back) {
+            vehicle.velocity.x = Math.sin(yaw) * speed
+            vehicle.velocity.z = Math.cos(yaw) * speed
+        } else {
+            vehicle.velocity.x *= 0.9
+            vehicle.velocity.z *= 0.9
+        }
+
+        // Vertical movement
+        if (bot.controlState.jump) {
+            vehicle.velocity.y = boatFly.settings.verticalSpeed
+        } else if (bot.controlState.sneak) {
+            vehicle.velocity.y = -boatFly.settings.verticalSpeed
+        } else if (boatFly.settings.glide) {
+            vehicle.velocity.y = Math.max(vehicle.velocity.y, -0.1) // Slow fall
+        }
+    }
+
+    registerModule(boatFly)
+
+    // -- Entity Speed --
+    const entitySpeed = new Module('entityspeed', 'Entity Speed', 'Movement', 'Speed up horses, pigs, boats', {
+        speed: 2.0,
+        applyToAll: true // Apply to all rideable entities
+    })
+
+    entitySpeed.onTick = (bot) => {
+        if (!bot.entity || !bot.vehicle) return
+
+        const vehicle = bot.vehicle
+        if (!vehicle) return
+
+        // Check if it's a rideable entity
+        const isRideable = vehicle.name?.includes('horse') || 
+                          vehicle.name?.includes('pig') || 
+                          vehicle.name?.includes('boat') ||
+                          vehicle.name?.includes('minecart') ||
+                          vehicle.name?.includes('strider') ||
+                          entitySpeed.settings.applyToAll
+
+        if (!isRideable) return
+
+        const yaw = bot.entity.yaw
+        const speed = entitySpeed.settings.speed
+
+        if (bot.controlState.forward) {
+            vehicle.velocity.x = -Math.sin(yaw) * speed
+            vehicle.velocity.z = -Math.cos(yaw) * speed
+        } else if (bot.controlState.back) {
+            vehicle.velocity.x = Math.sin(yaw) * speed * 0.5
+            vehicle.velocity.z = Math.cos(yaw) * speed * 0.5
+        }
+    }
+
+    registerModule(entitySpeed)
+
+    // -- Safe Walk --
+    const safeWalk = new Module('safewalk', 'Safe Walk', 'Movement', 'Prevent walking off edges', {
+        sneak: true, // Sneak at edges instead of stopping
+        range: 0.3 // Edge detection range
+    })
+
+    safeWalk.onTick = (bot) => {
+        if (!bot.entity || !bot.entity.onGround) return
+        if (!bot.controlState.forward && !bot.controlState.back && 
+            !bot.controlState.left && !bot.controlState.right) return
+
+        const pos = bot.entity.position
+        const yaw = bot.entity.yaw
+
+        // Calculate where we're headed
+        let dx = 0, dz = 0
+        if (bot.controlState.forward) {
+            dx -= Math.sin(yaw)
+            dz -= Math.cos(yaw)
+        }
+        if (bot.controlState.back) {
+            dx += Math.sin(yaw)
+            dz += Math.cos(yaw)
+        }
+        if (bot.controlState.left) {
+            dx -= Math.cos(yaw)
+            dz += Math.sin(yaw)
+        }
+        if (bot.controlState.right) {
+            dx += Math.cos(yaw)
+            dz -= Math.sin(yaw)
+        }
+
+        // Normalize
+        const len = Math.sqrt(dx * dx + dz * dz)
+        if (len > 0) {
+            dx /= len
+            dz /= len
+        }
+
+        // Check block ahead and below
+        const checkPos = pos.offset(dx * safeWalk.settings.range, -1, dz * safeWalk.settings.range)
+        const blockBelow = bot.blockAt(checkPos)
+
+        if (!blockBelow || blockBelow.boundingBox === 'empty') {
+            // Edge detected!
+            if (safeWalk.settings.sneak) {
+                bot.setControlState('sneak', true)
+            } else {
+                // Stop movement
+                bot.entity.velocity.x = 0
+                bot.entity.velocity.z = 0
+            }
+        } else if (safeWalk.settings.sneak) {
+            // Safe, can unsneak
+            bot.setControlState('sneak', false)
+        }
+    }
+
+    safeWalk.onToggle = (enabled) => {
+        if (!enabled && window.bot) {
+            window.bot.setControlState('sneak', false)
+        }
+    }
+
+    registerModule(safeWalk)
+
+    // -- Auto Sneak --
+    const autoSneak = new Module('autosneak', 'Auto Sneak', 'Movement', 'Hold sneak automatically', {
+        mode: 'Hold', // 'Hold' | 'Toggle' | 'Edge'
+        toggle: false // Internal state for toggle mode
+    }, {
+        mode: { type: 'dropdown', options: ['Hold', 'Toggle', 'Edge'] }
+    })
+
+    autoSneak.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('AutoSneak')
+        
+        if (enabled) {
+            if (autoSneak.settings.mode === 'Hold') {
+                if (window.bot) window.bot.setControlState('sneak', true)
+            }
+            if (log) log.info(`Auto Sneak enabled (${autoSneak.settings.mode} mode)`)
+        } else {
+            if (window.bot) window.bot.setControlState('sneak', false)
+            if (log) log.info('Auto Sneak disabled')
+        }
+    }
+
+    autoSneak.onTick = (bot) => {
+        if (autoSneak.settings.mode === 'Hold') {
+            bot.setControlState('sneak', true)
+        } else if (autoSneak.settings.mode === 'Edge') {
+            // Only sneak when near edges (similar to safe walk)
+            if (!bot.entity.onGround) return
+
+            const pos = bot.entity.position
+            let nearEdge = false
+
+            // Check all directions
+            const offsets = [
+                { x: 0.3, z: 0 }, { x: -0.3, z: 0 },
+                { x: 0, z: 0.3 }, { x: 0, z: -0.3 }
+            ]
+
+            for (const offset of offsets) {
+                const checkPos = pos.offset(offset.x, -1, offset.z)
+                const block = bot.blockAt(checkPos)
+                if (!block || block.boundingBox === 'empty') {
+                    nearEdge = true
+                    break
+                }
+            }
+
+            bot.setControlState('sneak', nearEdge)
+        }
+    }
+
+    registerModule(autoSneak)
 }

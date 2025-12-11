@@ -711,5 +711,219 @@ export const loadPlayerModules = () => {
     }
 
     registerModule(antiHunger)
+
+    // -- Middle Click Friend --
+    const middleClickFriend = new Module('middleclickfriend', 'Middle Click Friend', 'Player', 'Add/remove friends by middle clicking players', {
+        showMessage: true // Show chat message when adding/removing
+    })
+
+    // Friends list storage
+    if (!window.anticlient) window.anticlient = {}
+    if (!window.anticlient.friends) window.anticlient.friends = []
+
+    middleClickFriend.addFriend = (username) => {
+        if (!window.anticlient.friends.includes(username)) {
+            window.anticlient.friends.push(username)
+            const log = window.anticlientLogger?.module('Friends')
+            if (log) log.info(`Added ${username} as friend`)
+            return true
+        }
+        return false
+    }
+
+    middleClickFriend.removeFriend = (username) => {
+        const index = window.anticlient.friends.indexOf(username)
+        if (index !== -1) {
+            window.anticlient.friends.splice(index, 1)
+            const log = window.anticlientLogger?.module('Friends')
+            if (log) log.info(`Removed ${username} from friends`)
+            return true
+        }
+        return false
+    }
+
+    middleClickFriend.isFriend = (username) => {
+        return window.anticlient.friends.includes(username)
+    }
+
+    middleClickFriend.toggleFriend = (username) => {
+        if (middleClickFriend.isFriend(username)) {
+            return middleClickFriend.removeFriend(username) ? 'removed' : null
+        } else {
+            return middleClickFriend.addFriend(username) ? 'added' : null
+        }
+    }
+
+    // Mouse handler
+    let middleClickHandler = null
+
+    middleClickFriend.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('Friends')
+        
+        if (enabled) {
+            middleClickHandler = (e) => {
+                if (e.button !== 1) return // Middle click only
+                if (!window.bot) return
+
+                // Get entity player is looking at
+                const entity = window.bot.entityAtCursor?.()
+                if (!entity || entity.type !== 'player') return
+
+                const username = entity.username
+                if (!username) return
+
+                const action = middleClickFriend.toggleFriend(username)
+                
+                if (middleClickFriend.settings.showMessage && action) {
+                    if (log) log.info(`${action === 'added' ? 'Added' : 'Removed'} ${username} ${action === 'added' ? 'as' : 'from'} friend${action === 'added' ? '' : 's'}`)
+                }
+            }
+            
+            window.addEventListener('mousedown', middleClickHandler)
+            if (log) log.info('Middle Click Friend enabled')
+        } else {
+            if (middleClickHandler) {
+                window.removeEventListener('mousedown', middleClickHandler)
+                middleClickHandler = null
+            }
+            if (log) log.info('Middle Click Friend disabled')
+        }
+    }
+
+    // Expose friends list for other modules (like KillAura)
+    middleClickFriend.getFriends = () => window.anticlient.friends
+
+    registerModule(middleClickFriend)
+
+    // -- Chat Improvements --
+    const chatImprovements = new Module('chatimprovements', 'Chat Improvements', 'Player', 'Enhanced chat with timestamps, copy, filter', {
+        timestamps: true,
+        timestampFormat: 'HH:mm:ss',
+        copyOnClick: true,
+        filterSpam: false,
+        spamThreshold: 3, // Messages in 5 seconds
+        highlightMentions: true,
+        mentionSound: true
+    })
+
+    let chatMessages = []
+    let originalChatHandler = null
+
+    chatImprovements.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('Chat')
+        
+        if (enabled && window.bot) {
+            // Store original chat handler if exists
+            originalChatHandler = window.bot.listeners('message')?.[0]
+
+            window.bot.on('message', (jsonMsg, position) => {
+                if (!chatImprovements.enabled) return
+
+                const message = jsonMsg.toString()
+                const now = Date.now()
+
+                // Spam filter
+                if (chatImprovements.settings.filterSpam) {
+                    const recentSame = chatMessages.filter(m => 
+                        m.text === message && now - m.time < 5000
+                    ).length
+
+                    if (recentSame >= chatImprovements.settings.spamThreshold) {
+                        if (log) log.debug(`Filtered spam: ${message}`)
+                        return // Don't process spam
+                    }
+                }
+
+                // Store message
+                chatMessages.push({ text: message, time: now })
+                
+                // Keep only last 100 messages
+                if (chatMessages.length > 100) {
+                    chatMessages = chatMessages.slice(-100)
+                }
+
+                // Check for mentions
+                if (chatImprovements.settings.highlightMentions && window.bot.username) {
+                    if (message.toLowerCase().includes(window.bot.username.toLowerCase())) {
+                        if (log) log.info(`You were mentioned: ${message}`)
+                        // Could play sound here if we had audio API
+                    }
+                }
+            })
+
+            if (log) log.info('Chat Improvements enabled')
+        } else {
+            if (log) log.info('Chat Improvements disabled')
+        }
+    }
+
+    // Format timestamp
+    chatImprovements.formatTime = (date) => {
+        const pad = (n) => n.toString().padStart(2, '0')
+        return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    }
+
+    // Get chat history
+    chatImprovements.getHistory = () => chatMessages
+
+    registerModule(chatImprovements)
+
+    // -- Ping Spoof --
+    const pingSpoof = new Module('pingspoof', 'Ping Spoof', 'Player', 'Fake your ping display', {
+        mode: 'Add', // 'Add' | 'Set' | 'Random'
+        addValue: 100, // ms to add
+        setValue: 50, // Fixed ping value
+        randomMin: 20,
+        randomMax: 100
+    }, {
+        mode: { type: 'dropdown', options: ['Add', 'Set', 'Random'] }
+    })
+
+    let originalKeepAlive = null
+
+    pingSpoof.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('PingSpoof')
+        
+        if (enabled && window.bot && window.bot._client) {
+            // Hook keep_alive packets (used for ping calculation)
+            const client = window.bot._client
+            
+            if (!originalKeepAlive) {
+                originalKeepAlive = client.write.bind(client)
+            }
+
+            client.write = (name, data) => {
+                if (name === 'keep_alive' && pingSpoof.enabled) {
+                    // Delay the response to increase displayed ping
+                    let delay = 0
+                    
+                    if (pingSpoof.settings.mode === 'Add') {
+                        delay = pingSpoof.settings.addValue
+                    } else if (pingSpoof.settings.mode === 'Set') {
+                        delay = pingSpoof.settings.setValue
+                    } else if (pingSpoof.settings.mode === 'Random') {
+                        delay = pingSpoof.settings.randomMin + 
+                            Math.random() * (pingSpoof.settings.randomMax - pingSpoof.settings.randomMin)
+                    }
+
+                    setTimeout(() => {
+                        originalKeepAlive(name, data)
+                    }, delay)
+                    return
+                }
+                return originalKeepAlive(name, data)
+            }
+
+            if (log) log.info(`Ping Spoof enabled (${pingSpoof.settings.mode} mode)`)
+        } else {
+            if (originalKeepAlive && window.bot && window.bot._client) {
+                window.bot._client.write = originalKeepAlive
+                originalKeepAlive = null
+            }
+            if (log) log.info('Ping Spoof disabled')
+        }
+    }
+
+    registerModule(pingSpoof)
 }
 

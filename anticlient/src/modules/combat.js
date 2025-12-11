@@ -325,6 +325,87 @@ export const loadCombatModules = () => {
     }
     registerModule(autoArmor)
 
+    // -- W-Tap (Sprint Reset for Knockback) --
+    const wtap = new Module('wtap', 'W-Tap', 'Combat', 'Auto sprint reset for better knockback', {
+        mode: 'W', // 'W' | 'S' | 'Sprint'
+        delay: 50, // ms between tap
+        onlyOnHit: true // Only activate when hitting entity
+    }, {
+        mode: { type: 'dropdown', options: ['W', 'S', 'Sprint'] }
+    })
+
+    let lastWtapTime = 0
+    let wtapActive = false
+
+    // Hook into attack to trigger W-tap
+    wtap.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('WTap')
+        
+        if (enabled && window.bot) {
+            // Store original attack
+            if (!wtap._originalAttack) {
+                wtap._originalAttack = window.bot.attack.bind(window.bot)
+            }
+
+            window.bot.attack = (entity) => {
+                if (wtap.enabled && wtap.settings.onlyOnHit) {
+                    performWtap()
+                }
+                return wtap._originalAttack(entity)
+            }
+
+            if (log) log.info(`W-Tap enabled (${wtap.settings.mode} mode)`)
+        } else if (!enabled) {
+            if (wtap._originalAttack && window.bot) {
+                window.bot.attack = wtap._originalAttack
+            }
+            if (log) log.info('W-Tap disabled')
+        }
+    }
+
+    const performWtap = () => {
+        const now = Date.now()
+        if (now - lastWtapTime < wtap.settings.delay * 2) return
+        if (wtapActive) return
+
+        wtapActive = true
+        lastWtapTime = now
+        const bot = window.bot
+        if (!bot) return
+
+        if (wtap.settings.mode === 'W') {
+            // Release W, wait, press W
+            bot.setControlState('forward', false)
+            setTimeout(() => {
+                bot.setControlState('forward', true)
+                wtapActive = false
+            }, wtap.settings.delay)
+        } else if (wtap.settings.mode === 'S') {
+            // Tap S briefly
+            bot.setControlState('back', true)
+            setTimeout(() => {
+                bot.setControlState('back', false)
+                wtapActive = false
+            }, wtap.settings.delay)
+        } else if (wtap.settings.mode === 'Sprint') {
+            // Reset sprint
+            bot.setSprinting(false)
+            setTimeout(() => {
+                bot.setSprinting(true)
+                wtapActive = false
+            }, wtap.settings.delay)
+        }
+    }
+
+    wtap.onTick = (bot) => {
+        // If not onlyOnHit, perform W-tap continuously while attacking
+        if (!wtap.settings.onlyOnHit && bot.controlState.attack) {
+            performWtap()
+        }
+    }
+
+    registerModule(wtap)
+
     // -- Bow Aimbot with Projectile Prediction --
     const bowAimbot = new Module('bowaimbot', 'Bow Aimbot', 'Combat', 'Predict and aim at moving targets with bow/projectiles', {
         range: 32,

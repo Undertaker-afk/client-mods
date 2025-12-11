@@ -322,6 +322,72 @@ var loadCombatModules = () => {
     }
   };
   registerModule(autoArmor);
+  const wtap = new Module("wtap", "W-Tap", "Combat", "Auto sprint reset for better knockback", {
+    mode: "W",
+    // 'W' | 'S' | 'Sprint'
+    delay: 50,
+    // ms between tap
+    onlyOnHit: true
+    // Only activate when hitting entity
+  }, {
+    mode: { type: "dropdown", options: ["W", "S", "Sprint"] }
+  });
+  let lastWtapTime = 0;
+  let wtapActive = false;
+  wtap.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("WTap");
+    if (enabled && window.bot) {
+      if (!wtap._originalAttack) {
+        wtap._originalAttack = window.bot.attack.bind(window.bot);
+      }
+      window.bot.attack = (entity) => {
+        if (wtap.enabled && wtap.settings.onlyOnHit) {
+          performWtap();
+        }
+        return wtap._originalAttack(entity);
+      };
+      if (log) log.info(`W-Tap enabled (${wtap.settings.mode} mode)`);
+    } else if (!enabled) {
+      if (wtap._originalAttack && window.bot) {
+        window.bot.attack = wtap._originalAttack;
+      }
+      if (log) log.info("W-Tap disabled");
+    }
+  };
+  const performWtap = () => {
+    const now = Date.now();
+    if (now - lastWtapTime < wtap.settings.delay * 2) return;
+    if (wtapActive) return;
+    wtapActive = true;
+    lastWtapTime = now;
+    const bot = window.bot;
+    if (!bot) return;
+    if (wtap.settings.mode === "W") {
+      bot.setControlState("forward", false);
+      setTimeout(() => {
+        bot.setControlState("forward", true);
+        wtapActive = false;
+      }, wtap.settings.delay);
+    } else if (wtap.settings.mode === "S") {
+      bot.setControlState("back", true);
+      setTimeout(() => {
+        bot.setControlState("back", false);
+        wtapActive = false;
+      }, wtap.settings.delay);
+    } else if (wtap.settings.mode === "Sprint") {
+      bot.setSprinting(false);
+      setTimeout(() => {
+        bot.setSprinting(true);
+        wtapActive = false;
+      }, wtap.settings.delay);
+    }
+  };
+  wtap.onTick = (bot) => {
+    if (!wtap.settings.onlyOnHit && bot.controlState.attack) {
+      performWtap();
+    }
+  };
+  registerModule(wtap);
   const bowAimbot = new Module("bowaimbot", "Bow Aimbot", "Combat", "Predict and aim at moving targets with bow/projectiles", {
     range: 32,
     target: "players",
@@ -501,28 +567,116 @@ var loadMovementModules = () => {
     speed: 1,
     fastSpeed: 3,
     slowSpeed: 0.3,
-    smoothing: 0.5
+    smoothing: 0.5,
+    interaction: true,
+    // Allow interacting with blocks from freecam position
+    interactionRange: 6
+    // Max range for interaction
   });
   let freecamPosition = null;
   let freecamYaw = 0;
   let freecamPitch = 0;
   let freecamVelocity = { x: 0, y: 0, z: 0 };
   let originalPosition = null;
+  let interactionListener = null;
+  freecam.getTargetBlock = () => {
+    if (!freecamPosition || !window.bot) return null;
+    const bot = window.bot;
+    const Vec3 = bot.entity.position.constructor;
+    const eyePos = new Vec3(freecamPosition.x, freecamPosition.y + 1.62, freecamPosition.z);
+    const dirX = -Math.sin(freecamYaw) * Math.cos(freecamPitch);
+    const dirY = -Math.sin(freecamPitch);
+    const dirZ = -Math.cos(freecamYaw) * Math.cos(freecamPitch);
+    const direction = new Vec3(dirX, dirY, dirZ);
+    const range = freecam.settings.interactionRange;
+    for (let dist = 0.5; dist <= range; dist += 0.25) {
+      const checkPos = eyePos.offset(dirX * dist, dirY * dist, dirZ * dist);
+      const block = bot.blockAt(checkPos);
+      if (block && block.boundingBox !== "empty" && block.name !== "air") {
+        return {
+          block,
+          position: block.position.clone(),
+          distance: dist
+        };
+      }
+    }
+    return null;
+  };
+  freecam.getBlockFace = (blockPos) => {
+    if (!freecamPosition) return { x: 0, y: 1, z: 0 };
+    const Vec3 = window.bot.entity.position.constructor;
+    const eyePos = new Vec3(freecamPosition.x, freecamPosition.y + 1.62, freecamPosition.z);
+    const blockCenter = blockPos.offset(0.5, 0.5, 0.5);
+    const dx = eyePos.x - blockCenter.x;
+    const dy = eyePos.y - blockCenter.y;
+    const dz = eyePos.z - blockCenter.z;
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+    const az = Math.abs(dz);
+    if (ax > ay && ax > az) {
+      return { x: dx > 0 ? 1 : -1, y: 0, z: 0 };
+    } else if (ay > az) {
+      return { x: 0, y: dy > 0 ? 1 : -1, z: 0 };
+    } else {
+      return { x: 0, y: 0, z: dz > 0 ? 1 : -1 };
+    }
+  };
   freecam.onToggle = (enabled) => {
     if (!window.bot || !window.bot.entity) return;
+    const log = window.anticlientLogger?.module("Freecam");
     if (enabled) {
       originalPosition = window.bot.entity.position.clone();
       freecamPosition = window.bot.entity.position.clone();
       freecamYaw = window.bot.entity.yaw;
       freecamPitch = window.bot.entity.pitch;
       freecamVelocity = { x: 0, y: 0, z: 0 };
-      console.log("[Freecam] Enabled - Camera detached from player");
+      if (freecam.settings.interaction) {
+        interactionListener = (e) => {
+          if (!freecam.enabled || !freecamPosition) return;
+          const target = freecam.getTargetBlock();
+          if (!target) return;
+          const bot = window.bot;
+          if (e.button === 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (log) log.info(`Freecam dig at ${target.position.x}, ${target.position.y}, ${target.position.z}`);
+            bot.dig(target.block, false).catch((err) => {
+              if (log) log.warning(`Dig failed: ${err.message}`);
+            });
+          } else if (e.button === 2) {
+            e.preventDefault();
+            e.stopPropagation();
+            const face = freecam.getBlockFace(target.position);
+            if (log) log.info(`Freecam interact at ${target.position.x}, ${target.position.y}, ${target.position.z}`);
+            bot.activateBlock(target.block).catch((err) => {
+              if (bot.heldItem) {
+                bot.placeBlock(target.block, new bot.entity.position.constructor(face.x, face.y, face.z)).catch(() => {
+                });
+              }
+            });
+          }
+        };
+        document.addEventListener("mousedown", interactionListener, true);
+      }
+      if (log) log.info("Freecam enabled - Camera detached from player");
+      if (freecam.settings.interaction && log) {
+        log.info("Freecam interaction enabled - Click to interact from camera position");
+      }
     } else {
       freecamPosition = null;
       freecamVelocity = { x: 0, y: 0, z: 0 };
-      console.log("[Freecam] Disabled - Camera attached to player");
+      if (interactionListener) {
+        document.removeEventListener("mousedown", interactionListener, true);
+        interactionListener = null;
+      }
+      if (window.anticlient && window.anticlient.visuals) {
+        window.anticlient.visuals.freecam = { enabled: false };
+      }
+      if (log) log.info("Freecam disabled - Camera attached to player");
     }
   };
+  freecam.getPosition = () => freecamPosition ? freecamPosition.clone() : null;
+  freecam.getRotation = () => ({ yaw: freecamYaw, pitch: freecamPitch });
   freecam.onTick = (bot) => {
     if (!freecamPosition) return;
     let currentSpeed = freecam.settings.speed;
@@ -572,6 +726,27 @@ var loadMovementModules = () => {
     bot.entity.velocity.x = 0;
     bot.entity.velocity.y = 0;
     bot.entity.velocity.z = 0;
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    const target = freecam.settings.interaction ? freecam.getTargetBlock() : null;
+    window.anticlient.visuals.freecam = {
+      enabled: true,
+      position: { x: freecamPosition.x, y: freecamPosition.y, z: freecamPosition.z },
+      yaw: freecamYaw,
+      pitch: freecamPitch,
+      targetBlock: target ? {
+        x: target.position.x,
+        y: target.position.y,
+        z: target.position.z,
+        name: target.block.name,
+        distance: target.distance
+      } : null,
+      playerPosition: originalPosition ? {
+        x: originalPosition.x,
+        y: originalPosition.y,
+        z: originalPosition.z
+      } : null
+    };
   };
   registerModule(freecam);
   const speed = new Module("speed", "Speed", "Movement", "Moves faster on ground", {
@@ -1089,6 +1264,200 @@ var loadMovementModules = () => {
     }
   };
   registerModule(phase);
+  const longJump = new Module("longjump", "Long Jump", "Movement", "Enhanced horizontal jumping", {
+    boost: 1.5,
+    // Horizontal velocity multiplier
+    mode: "Boost",
+    // 'Boost' | 'Glide' | 'NCP'
+    autoJump: false
+    // Auto jump when on ground
+  }, {
+    mode: { type: "dropdown", options: ["Boost", "Glide", "NCP"] }
+  });
+  let longJumpActive = false;
+  longJump.onTick = (bot) => {
+    if (!bot.entity) return;
+    if (longJump.settings.autoJump && bot.entity.onGround && bot.controlState.forward) {
+      bot.setControlState("jump", true);
+      setTimeout(() => bot.setControlState("jump", false), 50);
+    }
+    if (!bot.entity.onGround && bot.controlState.jump && !longJumpActive) {
+      longJumpActive = true;
+      const yaw = bot.entity.yaw;
+      if (longJump.settings.mode === "Boost") {
+        bot.entity.velocity.x += -Math.sin(yaw) * longJump.settings.boost * 0.5;
+        bot.entity.velocity.z += -Math.cos(yaw) * longJump.settings.boost * 0.5;
+      } else if (longJump.settings.mode === "Glide") {
+        bot.entity.velocity.x = -Math.sin(yaw) * longJump.settings.boost;
+        bot.entity.velocity.z = -Math.cos(yaw) * longJump.settings.boost;
+        bot.entity.velocity.y = Math.max(bot.entity.velocity.y, -0.1);
+      } else if (longJump.settings.mode === "NCP") {
+        bot.entity.velocity.x = -Math.sin(yaw) * 0.9;
+        bot.entity.velocity.z = -Math.cos(yaw) * 0.9;
+        bot.entity.velocity.y = 0.42;
+      }
+    }
+    if (bot.entity.onGround) {
+      longJumpActive = false;
+    }
+    if (longJump.settings.mode === "Glide" && !bot.entity.onGround && bot.controlState.forward) {
+      const yaw = bot.entity.yaw;
+      const speed2 = longJump.settings.boost * 0.3;
+      bot.entity.velocity.x = -Math.sin(yaw) * speed2;
+      bot.entity.velocity.z = -Math.cos(yaw) * speed2;
+    }
+  };
+  registerModule(longJump);
+  const boatFly = new Module("boatfly", "Boat Fly", "Movement", "Fly using boats", {
+    speed: 2,
+    verticalSpeed: 1,
+    glide: true
+    // Glide instead of fall
+  });
+  boatFly.onTick = (bot) => {
+    if (!bot.entity || !bot.vehicle) return;
+    const vehicle = bot.vehicle;
+    if (!vehicle || !vehicle.name?.includes("boat")) return;
+    const yaw = bot.entity.yaw;
+    const speed2 = boatFly.settings.speed;
+    if (bot.controlState.forward) {
+      vehicle.velocity.x = -Math.sin(yaw) * speed2;
+      vehicle.velocity.z = -Math.cos(yaw) * speed2;
+    } else if (bot.controlState.back) {
+      vehicle.velocity.x = Math.sin(yaw) * speed2;
+      vehicle.velocity.z = Math.cos(yaw) * speed2;
+    } else {
+      vehicle.velocity.x *= 0.9;
+      vehicle.velocity.z *= 0.9;
+    }
+    if (bot.controlState.jump) {
+      vehicle.velocity.y = boatFly.settings.verticalSpeed;
+    } else if (bot.controlState.sneak) {
+      vehicle.velocity.y = -boatFly.settings.verticalSpeed;
+    } else if (boatFly.settings.glide) {
+      vehicle.velocity.y = Math.max(vehicle.velocity.y, -0.1);
+    }
+  };
+  registerModule(boatFly);
+  const entitySpeed = new Module("entityspeed", "Entity Speed", "Movement", "Speed up horses, pigs, boats", {
+    speed: 2,
+    applyToAll: true
+    // Apply to all rideable entities
+  });
+  entitySpeed.onTick = (bot) => {
+    if (!bot.entity || !bot.vehicle) return;
+    const vehicle = bot.vehicle;
+    if (!vehicle) return;
+    const isRideable = vehicle.name?.includes("horse") || vehicle.name?.includes("pig") || vehicle.name?.includes("boat") || vehicle.name?.includes("minecart") || vehicle.name?.includes("strider") || entitySpeed.settings.applyToAll;
+    if (!isRideable) return;
+    const yaw = bot.entity.yaw;
+    const speed2 = entitySpeed.settings.speed;
+    if (bot.controlState.forward) {
+      vehicle.velocity.x = -Math.sin(yaw) * speed2;
+      vehicle.velocity.z = -Math.cos(yaw) * speed2;
+    } else if (bot.controlState.back) {
+      vehicle.velocity.x = Math.sin(yaw) * speed2 * 0.5;
+      vehicle.velocity.z = Math.cos(yaw) * speed2 * 0.5;
+    }
+  };
+  registerModule(entitySpeed);
+  const safeWalk = new Module("safewalk", "Safe Walk", "Movement", "Prevent walking off edges", {
+    sneak: true,
+    // Sneak at edges instead of stopping
+    range: 0.3
+    // Edge detection range
+  });
+  safeWalk.onTick = (bot) => {
+    if (!bot.entity || !bot.entity.onGround) return;
+    if (!bot.controlState.forward && !bot.controlState.back && !bot.controlState.left && !bot.controlState.right) return;
+    const pos = bot.entity.position;
+    const yaw = bot.entity.yaw;
+    let dx = 0, dz = 0;
+    if (bot.controlState.forward) {
+      dx -= Math.sin(yaw);
+      dz -= Math.cos(yaw);
+    }
+    if (bot.controlState.back) {
+      dx += Math.sin(yaw);
+      dz += Math.cos(yaw);
+    }
+    if (bot.controlState.left) {
+      dx -= Math.cos(yaw);
+      dz += Math.sin(yaw);
+    }
+    if (bot.controlState.right) {
+      dx += Math.cos(yaw);
+      dz -= Math.sin(yaw);
+    }
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len > 0) {
+      dx /= len;
+      dz /= len;
+    }
+    const checkPos = pos.offset(dx * safeWalk.settings.range, -1, dz * safeWalk.settings.range);
+    const blockBelow = bot.blockAt(checkPos);
+    if (!blockBelow || blockBelow.boundingBox === "empty") {
+      if (safeWalk.settings.sneak) {
+        bot.setControlState("sneak", true);
+      } else {
+        bot.entity.velocity.x = 0;
+        bot.entity.velocity.z = 0;
+      }
+    } else if (safeWalk.settings.sneak) {
+      bot.setControlState("sneak", false);
+    }
+  };
+  safeWalk.onToggle = (enabled) => {
+    if (!enabled && window.bot) {
+      window.bot.setControlState("sneak", false);
+    }
+  };
+  registerModule(safeWalk);
+  const autoSneak = new Module("autosneak", "Auto Sneak", "Movement", "Hold sneak automatically", {
+    mode: "Hold",
+    // 'Hold' | 'Toggle' | 'Edge'
+    toggle: false
+    // Internal state for toggle mode
+  }, {
+    mode: { type: "dropdown", options: ["Hold", "Toggle", "Edge"] }
+  });
+  autoSneak.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("AutoSneak");
+    if (enabled) {
+      if (autoSneak.settings.mode === "Hold") {
+        if (window.bot) window.bot.setControlState("sneak", true);
+      }
+      if (log) log.info(`Auto Sneak enabled (${autoSneak.settings.mode} mode)`);
+    } else {
+      if (window.bot) window.bot.setControlState("sneak", false);
+      if (log) log.info("Auto Sneak disabled");
+    }
+  };
+  autoSneak.onTick = (bot) => {
+    if (autoSneak.settings.mode === "Hold") {
+      bot.setControlState("sneak", true);
+    } else if (autoSneak.settings.mode === "Edge") {
+      if (!bot.entity.onGround) return;
+      const pos = bot.entity.position;
+      let nearEdge = false;
+      const offsets = [
+        { x: 0.3, z: 0 },
+        { x: -0.3, z: 0 },
+        { x: 0, z: 0.3 },
+        { x: 0, z: -0.3 }
+      ];
+      for (const offset of offsets) {
+        const checkPos = pos.offset(offset.x, -1, offset.z);
+        const block = bot.blockAt(checkPos);
+        if (!block || block.boundingBox === "empty") {
+          nearEdge = true;
+          break;
+        }
+      }
+      bot.setControlState("sneak", nearEdge);
+    }
+  };
+  registerModule(autoSneak);
 };
 
 // anticlient/src/modules/render.js
@@ -1110,28 +1479,146 @@ var loadRenderModules = () => {
   }, {
     boxType: { type: "dropdown", options: ["2D", "3D"] }
   });
+  let espTrackedEntities = /* @__PURE__ */ new Set();
+  let espCleanupInterval = null;
   esp.onToggle = (enabled) => {
     if (!window.anticlient) window.anticlient = { visuals: {} };
     if (!window.anticlient.visuals) window.anticlient.visuals = {};
-    window.anticlient.visuals.esp = enabled;
-    window.anticlient.visuals.espSettings = esp.settings;
+    if (enabled) {
+      window.anticlient.visuals.esp = true;
+      window.anticlient.visuals.espSettings = esp.settings;
+      window.anticlient.visuals.espEntities = [];
+      espCleanupInterval = setInterval(() => {
+        if (!esp.enabled) return;
+        cleanupESP();
+      }, 1e3);
+    } else {
+      window.anticlient.visuals.esp = false;
+      window.anticlient.visuals.espEntities = [];
+      cleanupESP(true);
+      espTrackedEntities.clear();
+      if (espCleanupInterval) {
+        clearInterval(espCleanupInterval);
+        espCleanupInterval = null;
+      }
+    }
+  };
+  const cleanupESP = (force = false) => {
+    if (!window.bot) return;
+    const currentEntities = new Set(Object.keys(window.bot.entities || {}).map(Number));
+    for (const entityId of espTrackedEntities) {
+      if (!currentEntities.has(entityId) || force) {
+        espTrackedEntities.delete(entityId);
+        if (window.anticlient?.cleanupEntityVisual) {
+          window.anticlient.cleanupEntityVisual(entityId);
+        }
+      }
+    }
+    if (window.anticlient?.visuals?.espEntities) {
+      window.anticlient.visuals.espEntities = window.anticlient.visuals.espEntities.filter(
+        (e) => currentEntities.has(e.id)
+      );
+    }
+  };
+  esp.onTick = (bot) => {
+    if (!bot || !bot.entities) return;
+    const entities = [];
+    const playerPos = bot.entity?.position;
+    if (!playerPos) return;
+    for (const [id, entity] of Object.entries(bot.entities)) {
+      if (!entity || !entity.position) continue;
+      if (entity === bot.entity) continue;
+      const entityId = parseInt(id);
+      const isPlayer = entity.type === "player";
+      const isMob = entity.type === "mob" || entity.type === "hostile" || entity.type === "animal";
+      if (!isPlayer && !isMob) continue;
+      const distance = playerPos.distanceTo(entity.position);
+      let width = 0.6;
+      let height = 1.8;
+      if (entity.height) height = entity.height;
+      if (entity.width) width = entity.width;
+      const entityData = {
+        id: entityId,
+        type: entity.type,
+        name: entity.username || entity.displayName || entity.name || "Unknown",
+        position: {
+          x: entity.position.x,
+          y: entity.position.y,
+          z: entity.position.z
+        },
+        width,
+        height,
+        distance,
+        health: entity.health || 20,
+        maxHealth: entity.maxHealth || 20,
+        isPlayer,
+        color: isPlayer ? esp.settings.playerColor : esp.settings.mobColor,
+        yaw: entity.yaw || 0,
+        pitch: entity.pitch || 0
+      };
+      entities.push(entityData);
+      espTrackedEntities.add(entityId);
+    }
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.espEntities = entities;
+      window.anticlient.visuals.espSettings = esp.settings;
+    }
   };
   esp.onSettingChanged = (key, newValue) => {
     if (window.anticlient?.visuals) {
       window.anticlient.visuals.espSettings = esp.settings;
     }
   };
+  esp.cleanup = () => cleanupESP(true);
   registerModule(esp);
   const tracers = new Module("tracers", "Tracers", "Render", "Draw lines to entities", {
     color: "#ffffff",
+    playerColor: "#00ffff",
+    mobColor: "#ff5555",
     showDistance: true,
-    maxDistance: 64
+    maxDistance: 64,
+    playersOnly: false
   });
   tracers.onToggle = (enabled) => {
     if (!window.anticlient) window.anticlient = { visuals: {} };
     if (!window.anticlient.visuals) window.anticlient.visuals = {};
     window.anticlient.visuals.tracers = enabled;
     window.anticlient.visuals.tracersSettings = tracers.settings;
+    if (!enabled) {
+      window.anticlient.visuals.tracersEntities = [];
+    }
+  };
+  tracers.onTick = (bot) => {
+    if (!bot || !bot.entities || !bot.entity?.position) return;
+    const entities = [];
+    const playerPos = bot.entity.position;
+    const eyePos = playerPos.offset(0, 1.62, 0);
+    for (const [id, entity] of Object.entries(bot.entities)) {
+      if (!entity || !entity.position) continue;
+      if (entity === bot.entity) continue;
+      const isPlayer = entity.type === "player";
+      const isMob = entity.type === "mob" || entity.type === "hostile" || entity.type === "animal";
+      if (tracers.settings.playersOnly && !isPlayer) continue;
+      if (!isPlayer && !isMob) continue;
+      const distance = playerPos.distanceTo(entity.position);
+      if (distance > tracers.settings.maxDistance) continue;
+      entities.push({
+        id: parseInt(id),
+        name: entity.username || entity.name || "Unknown",
+        from: { x: eyePos.x, y: eyePos.y, z: eyePos.z },
+        to: {
+          x: entity.position.x,
+          y: entity.position.y + (entity.height || 1.8) / 2,
+          z: entity.position.z
+        },
+        distance,
+        color: isPlayer ? tracers.settings.playerColor : tracers.settings.mobColor,
+        isPlayer
+      });
+    }
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.tracersEntities = entities;
+    }
   };
   tracers.onSettingChanged = () => {
     if (window.anticlient?.visuals) {
@@ -1142,13 +1629,45 @@ var loadRenderModules = () => {
   const nameTags = new Module("nametags", "NameTags", "Render", "Show entity names above heads", {
     range: 64,
     showHealth: true,
-    showDistance: true
+    showDistance: true,
+    scale: 1,
+    background: true
   });
   nameTags.onToggle = (enabled) => {
     if (!window.anticlient) window.anticlient = { visuals: {} };
     if (!window.anticlient.visuals) window.anticlient.visuals = {};
     window.anticlient.visuals.nameTags = enabled;
     window.anticlient.visuals.nameTagsSettings = nameTags.settings;
+    if (!enabled) {
+      window.anticlient.visuals.nameTagsEntities = [];
+    }
+  };
+  nameTags.onTick = (bot) => {
+    if (!bot || !bot.entities || !bot.entity?.position) return;
+    const entities = [];
+    const playerPos = bot.entity.position;
+    for (const [id, entity] of Object.entries(bot.entities)) {
+      if (!entity || !entity.position) continue;
+      if (entity === bot.entity) continue;
+      if (entity.type !== "player") continue;
+      const distance = playerPos.distanceTo(entity.position);
+      if (distance > nameTags.settings.range) continue;
+      entities.push({
+        id: parseInt(id),
+        name: entity.username || entity.displayName || "Unknown",
+        position: {
+          x: entity.position.x,
+          y: entity.position.y + (entity.height || 1.8) + 0.5,
+          z: entity.position.z
+        },
+        health: entity.health || 20,
+        maxHealth: entity.maxHealth || 20,
+        distance
+      });
+    }
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.nameTagsEntities = entities;
+    }
   };
   nameTags.onSettingChanged = () => {
     if (window.anticlient?.visuals) {
@@ -1527,6 +2046,258 @@ var loadRenderModules = () => {
     }
   };
   registerModule(trajectory);
+  const waypoints = new Module("waypoints", "Waypoints", "Render", "Save and display locations in the world", {
+    showDistance: true,
+    showName: true,
+    showCoords: false,
+    beamHeight: 256,
+    maxRenderDistance: 1e3
+  });
+  if (!window.anticlient) window.anticlient = {};
+  if (!window.anticlient.waypoints) window.anticlient.waypoints = [];
+  waypoints.addWaypoint = (name, pos, color = "#00ff00") => {
+    const wp = {
+      id: Date.now(),
+      name,
+      x: Math.floor(pos.x),
+      y: Math.floor(pos.y),
+      z: Math.floor(pos.z),
+      color,
+      dimension: window.bot?.game?.dimension || "overworld"
+    };
+    window.anticlient.waypoints.push(wp);
+    const log = window.anticlientLogger?.module("Waypoints");
+    if (log) log.info(`Added waypoint "${name}" at ${wp.x}, ${wp.y}, ${wp.z}`);
+    return wp;
+  };
+  waypoints.removeWaypoint = (id) => {
+    const index = window.anticlient.waypoints.findIndex((w) => w.id === id);
+    if (index !== -1) {
+      const wp = window.anticlient.waypoints.splice(index, 1)[0];
+      const log = window.anticlientLogger?.module("Waypoints");
+      if (log) log.info(`Removed waypoint "${wp.name}"`);
+      return true;
+    }
+    return false;
+  };
+  waypoints.clearWaypoints = () => {
+    window.anticlient.waypoints = [];
+    const log = window.anticlientLogger?.module("Waypoints");
+    if (log) log.info("Cleared all waypoints");
+  };
+  waypoints.onTick = (bot) => {
+    if (!bot.entity) return;
+    const playerPos = bot.entity.position;
+    const dimension = bot.game?.dimension || "overworld";
+    const visibleWaypoints = window.anticlient.waypoints.filter((wp) => wp.dimension === dimension).map((wp) => {
+      const distance = Math.sqrt(
+        Math.pow(wp.x - playerPos.x, 2) + Math.pow(wp.y - playerPos.y, 2) + Math.pow(wp.z - playerPos.z, 2)
+      );
+      return { ...wp, distance };
+    }).filter((wp) => wp.distance <= waypoints.settings.maxRenderDistance);
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.waypoints = {
+      enabled: true,
+      waypoints: visibleWaypoints,
+      settings: waypoints.settings
+    };
+  };
+  waypoints.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    if (!enabled) {
+      window.anticlient.visuals.waypoints = { enabled: false };
+    }
+  };
+  waypoints.addCurrentPosition = (name) => {
+    if (window.bot && window.bot.entity) {
+      return waypoints.addWaypoint(name || `Waypoint ${window.anticlient.waypoints.length + 1}`, window.bot.entity.position);
+    }
+    return null;
+  };
+  registerModule(waypoints);
+  const chunkBorders = new Module("chunkborders", "Chunk Borders", "Render", "Show chunk boundaries", {
+    color: "#ffff00",
+    opacity: 0.5,
+    showGrid: true,
+    // Show 16x16 grid
+    showSlimeChunks: false,
+    // Highlight slime chunks
+    slimeColor: "#00ff00",
+    height: 256
+    // Render height
+  });
+  chunkBorders.onTick = (bot) => {
+    if (!bot.entity) return;
+    const playerPos = bot.entity.position;
+    const chunkX = Math.floor(playerPos.x / 16) * 16;
+    const chunkZ = Math.floor(playerPos.z / 16) * 16;
+    const isSlimeChunk = chunkBorders.settings.showSlimeChunks && (chunkX / 16 + chunkZ / 16) % 10 === 0;
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.chunkBorders = {
+      enabled: true,
+      chunkX,
+      chunkZ,
+      color: isSlimeChunk ? chunkBorders.settings.slimeColor : chunkBorders.settings.color,
+      opacity: chunkBorders.settings.opacity,
+      showGrid: chunkBorders.settings.showGrid,
+      isSlimeChunk,
+      height: chunkBorders.settings.height,
+      // Chunk corner positions
+      corners: [
+        { x: chunkX, z: chunkZ },
+        { x: chunkX + 16, z: chunkZ },
+        { x: chunkX + 16, z: chunkZ + 16 },
+        { x: chunkX, z: chunkZ + 16 }
+      ]
+    };
+  };
+  chunkBorders.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    if (!enabled) {
+      window.anticlient.visuals.chunkBorders = { enabled: false };
+    }
+  };
+  registerModule(chunkBorders);
+  const lightOverlay = new Module("lightoverlay", "Light Overlay", "Render", "Show where mobs can spawn", {
+    color: "#ff0000",
+    // Red for dangerous
+    safeColor: "#00ff00",
+    // Green for safe
+    range: 16,
+    // Block range to check
+    showSafe: false,
+    // Also show safe blocks
+    minLightLevel: 0,
+    // Light level for mob spawning (0 in 1.18+)
+    updateInterval: 500
+    // ms between updates
+  });
+  let lightOverlayBlocks = [];
+  let lastLightUpdate = 0;
+  lightOverlay.onTick = (bot) => {
+    if (!bot.entity) return;
+    const now = Date.now();
+    if (now - lastLightUpdate < lightOverlay.settings.updateInterval) {
+      if (window.anticlient?.visuals) {
+        window.anticlient.visuals.lightOverlay = {
+          enabled: true,
+          blocks: lightOverlayBlocks,
+          settings: lightOverlay.settings
+        };
+      }
+      return;
+    }
+    lastLightUpdate = now;
+    const playerPos = bot.entity.position;
+    const range = lightOverlay.settings.range;
+    const minLight = lightOverlay.settings.minLightLevel;
+    lightOverlayBlocks = [];
+    for (let x = -range; x <= range; x++) {
+      for (let z = -range; z <= range; z++) {
+        for (let y = 2; y >= -2; y--) {
+          const checkPos = playerPos.offset(x, y, z);
+          const block = bot.blockAt(checkPos);
+          const blockAbove = bot.blockAt(checkPos.offset(0, 1, 0));
+          const blockBelow = bot.blockAt(checkPos.offset(0, -1, 0));
+          if (!block || !blockAbove || !blockBelow) continue;
+          if (blockBelow.boundingBox !== "empty" && block.boundingBox === "empty" && blockAbove.boundingBox === "empty") {
+            const lightLevel = block.light || 0;
+            if (lightLevel <= minLight) {
+              lightOverlayBlocks.push({
+                x: Math.floor(checkPos.x),
+                y: Math.floor(checkPos.y),
+                z: Math.floor(checkPos.z),
+                light: lightLevel,
+                safe: false,
+                color: lightOverlay.settings.color
+              });
+            } else if (lightOverlay.settings.showSafe) {
+              lightOverlayBlocks.push({
+                x: Math.floor(checkPos.x),
+                y: Math.floor(checkPos.y),
+                z: Math.floor(checkPos.z),
+                light: lightLevel,
+                safe: true,
+                color: lightOverlay.settings.safeColor
+              });
+            }
+            break;
+          }
+        }
+      }
+    }
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.lightOverlay = {
+      enabled: true,
+      blocks: lightOverlayBlocks,
+      settings: lightOverlay.settings
+    };
+  };
+  lightOverlay.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    if (!enabled) {
+      lightOverlayBlocks = [];
+      window.anticlient.visuals.lightOverlay = { enabled: false };
+    }
+  };
+  registerModule(lightOverlay);
+  const reachDisplay = new Module("reachdisplay", "Reach Display", "Render", "Show attack reach information", {
+    showCircle: true,
+    showDistance: true,
+    color: "#00ff00",
+    warningColor: "#ffff00",
+    dangerColor: "#ff0000",
+    reachDistance: 3
+    // Default MC reach
+  });
+  reachDisplay.onTick = (bot) => {
+    if (!bot.entity) return;
+    const target = bot.nearestEntity(
+      (e) => (e.type === "player" || e.type === "mob") && e !== bot.entity
+    );
+    let targetDistance = null;
+    let inReach = false;
+    let color = reachDisplay.settings.color;
+    if (target) {
+      targetDistance = bot.entity.position.distanceTo(target.position);
+      inReach = targetDistance <= reachDisplay.settings.reachDistance;
+      if (targetDistance <= reachDisplay.settings.reachDistance) {
+        color = reachDisplay.settings.color;
+      } else if (targetDistance <= reachDisplay.settings.reachDistance + 1) {
+        color = reachDisplay.settings.warningColor;
+      } else {
+        color = reachDisplay.settings.dangerColor;
+      }
+    }
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    window.anticlient.visuals.reachDisplay = {
+      enabled: true,
+      targetDistance,
+      inReach,
+      reachDistance: reachDisplay.settings.reachDistance,
+      color,
+      showCircle: reachDisplay.settings.showCircle,
+      showDistance: reachDisplay.settings.showDistance,
+      target: target ? {
+        position: target.position,
+        name: target.username || target.name || "Entity"
+      } : null
+    };
+  };
+  reachDisplay.onToggle = (enabled) => {
+    if (!window.anticlient) window.anticlient = { visuals: {} };
+    if (!window.anticlient.visuals) window.anticlient.visuals = {};
+    if (!enabled) {
+      window.anticlient.visuals.reachDisplay = { enabled: false };
+    }
+  };
+  registerModule(reachDisplay);
 };
 
 // anticlient/src/modules/player.js
@@ -2067,6 +2838,166 @@ var loadPlayerModules = () => {
     }
   };
   registerModule(antiHunger);
+  const middleClickFriend = new Module("middleclickfriend", "Middle Click Friend", "Player", "Add/remove friends by middle clicking players", {
+    showMessage: true
+    // Show chat message when adding/removing
+  });
+  if (!window.anticlient) window.anticlient = {};
+  if (!window.anticlient.friends) window.anticlient.friends = [];
+  middleClickFriend.addFriend = (username) => {
+    if (!window.anticlient.friends.includes(username)) {
+      window.anticlient.friends.push(username);
+      const log = window.anticlientLogger?.module("Friends");
+      if (log) log.info(`Added ${username} as friend`);
+      return true;
+    }
+    return false;
+  };
+  middleClickFriend.removeFriend = (username) => {
+    const index = window.anticlient.friends.indexOf(username);
+    if (index !== -1) {
+      window.anticlient.friends.splice(index, 1);
+      const log = window.anticlientLogger?.module("Friends");
+      if (log) log.info(`Removed ${username} from friends`);
+      return true;
+    }
+    return false;
+  };
+  middleClickFriend.isFriend = (username) => {
+    return window.anticlient.friends.includes(username);
+  };
+  middleClickFriend.toggleFriend = (username) => {
+    if (middleClickFriend.isFriend(username)) {
+      return middleClickFriend.removeFriend(username) ? "removed" : null;
+    } else {
+      return middleClickFriend.addFriend(username) ? "added" : null;
+    }
+  };
+  let middleClickHandler = null;
+  middleClickFriend.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("Friends");
+    if (enabled) {
+      middleClickHandler = (e) => {
+        if (e.button !== 1) return;
+        if (!window.bot) return;
+        const entity = window.bot.entityAtCursor?.();
+        if (!entity || entity.type !== "player") return;
+        const username = entity.username;
+        if (!username) return;
+        const action = middleClickFriend.toggleFriend(username);
+        if (middleClickFriend.settings.showMessage && action) {
+          if (log) log.info(`${action === "added" ? "Added" : "Removed"} ${username} ${action === "added" ? "as" : "from"} friend${action === "added" ? "" : "s"}`);
+        }
+      };
+      window.addEventListener("mousedown", middleClickHandler);
+      if (log) log.info("Middle Click Friend enabled");
+    } else {
+      if (middleClickHandler) {
+        window.removeEventListener("mousedown", middleClickHandler);
+        middleClickHandler = null;
+      }
+      if (log) log.info("Middle Click Friend disabled");
+    }
+  };
+  middleClickFriend.getFriends = () => window.anticlient.friends;
+  registerModule(middleClickFriend);
+  const chatImprovements = new Module("chatimprovements", "Chat Improvements", "Player", "Enhanced chat with timestamps, copy, filter", {
+    timestamps: true,
+    timestampFormat: "HH:mm:ss",
+    copyOnClick: true,
+    filterSpam: false,
+    spamThreshold: 3,
+    // Messages in 5 seconds
+    highlightMentions: true,
+    mentionSound: true
+  });
+  let chatMessages = [];
+  let originalChatHandler = null;
+  chatImprovements.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("Chat");
+    if (enabled && window.bot) {
+      originalChatHandler = window.bot.listeners("message")?.[0];
+      window.bot.on("message", (jsonMsg, position) => {
+        if (!chatImprovements.enabled) return;
+        const message = jsonMsg.toString();
+        const now = Date.now();
+        if (chatImprovements.settings.filterSpam) {
+          const recentSame = chatMessages.filter(
+            (m) => m.text === message && now - m.time < 5e3
+          ).length;
+          if (recentSame >= chatImprovements.settings.spamThreshold) {
+            if (log) log.debug(`Filtered spam: ${message}`);
+            return;
+          }
+        }
+        chatMessages.push({ text: message, time: now });
+        if (chatMessages.length > 100) {
+          chatMessages = chatMessages.slice(-100);
+        }
+        if (chatImprovements.settings.highlightMentions && window.bot.username) {
+          if (message.toLowerCase().includes(window.bot.username.toLowerCase())) {
+            if (log) log.info(`You were mentioned: ${message}`);
+          }
+        }
+      });
+      if (log) log.info("Chat Improvements enabled");
+    } else {
+      if (log) log.info("Chat Improvements disabled");
+    }
+  };
+  chatImprovements.formatTime = (date) => {
+    const pad = (n) => n.toString().padStart(2, "0");
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  };
+  chatImprovements.getHistory = () => chatMessages;
+  registerModule(chatImprovements);
+  const pingSpoof = new Module("pingspoof", "Ping Spoof", "Player", "Fake your ping display", {
+    mode: "Add",
+    // 'Add' | 'Set' | 'Random'
+    addValue: 100,
+    // ms to add
+    setValue: 50,
+    // Fixed ping value
+    randomMin: 20,
+    randomMax: 100
+  }, {
+    mode: { type: "dropdown", options: ["Add", "Set", "Random"] }
+  });
+  let originalKeepAlive = null;
+  pingSpoof.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("PingSpoof");
+    if (enabled && window.bot && window.bot._client) {
+      const client = window.bot._client;
+      if (!originalKeepAlive) {
+        originalKeepAlive = client.write.bind(client);
+      }
+      client.write = (name, data) => {
+        if (name === "keep_alive" && pingSpoof.enabled) {
+          let delay = 0;
+          if (pingSpoof.settings.mode === "Add") {
+            delay = pingSpoof.settings.addValue;
+          } else if (pingSpoof.settings.mode === "Set") {
+            delay = pingSpoof.settings.setValue;
+          } else if (pingSpoof.settings.mode === "Random") {
+            delay = pingSpoof.settings.randomMin + Math.random() * (pingSpoof.settings.randomMax - pingSpoof.settings.randomMin);
+          }
+          setTimeout(() => {
+            originalKeepAlive(name, data);
+          }, delay);
+          return;
+        }
+        return originalKeepAlive(name, data);
+      };
+      if (log) log.info(`Ping Spoof enabled (${pingSpoof.settings.mode} mode)`);
+    } else {
+      if (originalKeepAlive && window.bot && window.bot._client) {
+        window.bot._client.write = originalKeepAlive;
+        originalKeepAlive = null;
+      }
+      if (log) log.info("Ping Spoof disabled");
+    }
+  };
+  registerModule(pingSpoof);
 };
 
 // anticlient/src/modules/world.js
