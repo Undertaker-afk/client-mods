@@ -19,7 +19,21 @@ export const initUI = () => {
     uiRoot.style.display = 'none'
 
     const toggleUi = () => {
-        uiRoot.style.display = uiRoot.style.display === 'none' ? 'block' : 'none'
+        const isOpening = uiRoot.style.display === 'none'
+        uiRoot.style.display = isOpening ? 'block' : 'none'
+        
+        // Show/hide mouse cursor by managing activeModalStack
+        if (window.activeModalStack) {
+            if (isOpening) {
+                window.activeModalStack.push('anticlient-menu')
+            } else {
+                // Remove our modal from the stack
+                const index = window.activeModalStack.indexOf('anticlient-menu')
+                if (index > -1) {
+                    window.activeModalStack.splice(index, 1)
+                }
+            }
+        }
     }
 
     const keydownHandler = (e) => {

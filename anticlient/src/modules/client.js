@@ -1,12 +1,7 @@
 
 import { Module, registerModule } from '../core/Module.js'
 
-import { loadNetworkModules } from './network.js'
-
 export const loadClientModules = () => {
-    // Load network modules
-    // loadNetworkModules() // REMOVED: Loaded separately in entry.js to avoid double instantiation
-    
     // -- Settings Module --
     // We add a 'Settings' module that acts as a container for client-wide configs
     const settings = new Module('client_settings', 'Client Settings', 'Settings', 'Client configuration', {

@@ -19,7 +19,7 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/core/Module.js
+// anticlient/src/core/Module.js
 var Module_exports = {};
 __export(Module_exports, {
   Module: () => Module,
@@ -29,7 +29,7 @@ __export(Module_exports, {
 });
 var Module, categories, modules, registerModule;
 var init_Module = __esm({
-  "src/core/Module.js"() {
+  "anticlient/src/core/Module.js"() {
     Module = class {
       constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
         this.id = id;
@@ -76,7 +76,6 @@ var init_Module = __esm({
       "World": [],
       "Settings": [],
       "Packets": [],
-      "Network": [],
       "Scripting": []
     };
     modules = {};
@@ -89,7 +88,7 @@ var init_Module = __esm({
   }
 });
 
-// src/modules/combat.js
+// anticlient/src/modules/combat.js
 init_Module();
 var loadCombatModules = () => {
   const logger2 = window.anticlientLogger?.module("Combat") || console;
@@ -321,7 +320,7 @@ var loadCombatModules = () => {
   registerModule(autoArmor);
 };
 
-// src/modules/movement.js
+// anticlient/src/modules/movement.js
 init_Module();
 var loadMovementModules = () => {
   const flight = new Module("flight", "Flight", "Movement", "Allows you to fly like in creative mode", {
@@ -830,7 +829,7 @@ var loadMovementModules = () => {
   registerModule(portalGUI);
 };
 
-// src/modules/render.js
+// anticlient/src/modules/render.js
 init_Module();
 var loadRenderModules = () => {
   const fullbright = new Module("fullbright", "Fullbright", "Render", "See in the dark", { gamma: 1 });
@@ -1114,7 +1113,7 @@ var loadRenderModules = () => {
   registerModule(blinkTrail);
 };
 
-// src/modules/player.js
+// anticlient/src/modules/player.js
 init_Module();
 var loadPlayerModules = () => {
   const autoEat = new Module("autoeat", "Auto Eat", "Player", "Automatically eats food when hungry", {
@@ -1417,9 +1416,115 @@ var loadPlayerModules = () => {
     }
   };
   registerModule(packetMine);
+  const antiAfk = new Module("antiafk", "Anti-AFK", "Player", "Walks in random patterns to bypass AFK detection", {
+    enabled: false,
+    area: 3,
+    // 3x3 area
+    walkSpeed: 0.5,
+    // seconds between movements
+    jumpChance: 0.1,
+    // 10% chance to jump
+    rotateChance: 0.3
+    // 30% chance to rotate view
+  });
+  let afkInterval = null;
+  let afkStartPosition = null;
+  let currentAfkAction = null;
+  antiAfk.onToggle = (enabled) => {
+    const log = window.anticlientLogger?.module("AntiAFK");
+    if (enabled) {
+      if (!window.bot || !window.bot.entity) {
+        if (log) log.warning("Bot not available, waiting...");
+        setTimeout(() => {
+          if (antiAfk.enabled) antiAfk.toggle();
+        }, 1e3);
+        return;
+      }
+      afkStartPosition = window.bot.entity.position.clone();
+      if (log) log.info(`Anti-AFK enabled at position ${afkStartPosition.x.toFixed(1)}, ${afkStartPosition.y.toFixed(1)}, ${afkStartPosition.z.toFixed(1)}`);
+      afkInterval = setInterval(() => {
+        if (!window.bot || !window.bot.entity || !afkStartPosition) return;
+        const bot = window.bot;
+        bot.setControlState("forward", false);
+        bot.setControlState("back", false);
+        bot.setControlState("left", false);
+        bot.setControlState("right", false);
+        bot.setControlState("jump", false);
+        const currentPos = bot.entity.position;
+        const distance = currentPos.distanceTo(afkStartPosition);
+        const maxDistance = antiAfk.settings.area / 2;
+        if (distance > maxDistance) {
+          const direction = afkStartPosition.clone().subtract(currentPos).normalize();
+          const yaw = Math.atan2(-direction.x, -direction.z);
+          bot.look(yaw, 0, true);
+          bot.setControlState("forward", true);
+          if (log && log.level <= 0) log.debug("Too far, returning to start position");
+          setTimeout(() => {
+            bot.setControlState("forward", false);
+          }, 500);
+          return;
+        }
+        const actions = ["walk", "rotate", "jump", "idle"];
+        const randomAction = actions[Math.floor(Math.random() * actions.length)];
+        switch (randomAction) {
+          case "walk":
+            const directions = ["forward", "back", "left", "right"];
+            const randomDir = directions[Math.floor(Math.random() * directions.length)];
+            bot.setControlState(randomDir, true);
+            if (log && log.level <= 0) log.debug(`Walking ${randomDir}`);
+            setTimeout(() => {
+              bot.setControlState(randomDir, false);
+            }, Math.random() * 1e3 + 500);
+            break;
+          case "rotate":
+            const randomYaw = bot.entity.yaw + (Math.random() * Math.PI - Math.PI / 2);
+            const randomPitch = Math.random() * 0.5 - 0.25;
+            bot.look(randomYaw, randomPitch, true);
+            if (log && log.level <= 0) log.debug("Rotating view");
+            break;
+          case "jump":
+            if (bot.entity.onGround) {
+              bot.setControlState("jump", true);
+              if (log && log.level <= 0) log.debug("Jumping");
+              setTimeout(() => {
+                bot.setControlState("jump", false);
+              }, 100);
+            }
+            break;
+          case "idle":
+            if (log && log.level <= 0) log.debug("Idle");
+            break;
+        }
+      }, antiAfk.settings.walkSpeed * 1e3);
+      if (log) log.info("Anti-AFK movement started");
+    } else {
+      if (afkInterval) {
+        clearInterval(afkInterval);
+        afkInterval = null;
+      }
+      if (window.bot) {
+        window.bot.setControlState("forward", false);
+        window.bot.setControlState("back", false);
+        window.bot.setControlState("left", false);
+        window.bot.setControlState("right", false);
+        window.bot.setControlState("jump", false);
+      }
+      afkStartPosition = null;
+      if (log) log.info("Anti-AFK disabled");
+    }
+  };
+  antiAfk.onSettingChanged = (key, newValue) => {
+    const log = window.anticlientLogger?.module("AntiAFK");
+    if (key === "walkSpeed" && afkInterval && antiAfk.enabled) {
+      if (log) log.info(`Walk speed changed to ${newValue}s`);
+      antiAfk.toggle();
+      setTimeout(() => antiAfk.toggle(), 100);
+    }
+  };
+  registerModule(antiAfk);
 };
 
-// src/modules/world.js
+// anticlient/src/modules/world.js
 init_Module();
 var loadWorldModules = () => {
   const nuker = new Module("nuker", "Nuker", "World", "Break blocks around you", {
@@ -1539,166 +1644,8 @@ var loadWorldModules = () => {
   registerModule(autoMine);
 };
 
-// src/modules/client.js
+// anticlient/src/modules/client.js
 init_Module();
-
-// src/modules/network.js
-init_Module();
-var loadNetworkModules = () => {
-  const wireless = new Module("wireless", "Wireless Integration", "Settings", "Connect to desktop bridge", {
-    enabled: false,
-    host: "localhost",
-    port: 8080,
-    autoConnect: true,
-    shareInventory: true,
-    shareViewport: true
-  });
-  let ws = null;
-  let reconnectInterval = null;
-  let updateInterval = null;
-  wireless.onToggle = (enabled) => {
-    if (enabled) {
-      connect();
-      if (wireless.settings.autoConnect && !reconnectInterval) {
-        reconnectInterval = setInterval(() => {
-          if (!ws || ws.readyState === WebSocket.CLOSED) {
-            connect();
-          }
-        }, 5e3);
-      }
-      if (!updateInterval) {
-        updateInterval = setInterval(sendUpdate, 100);
-      }
-    } else {
-      disconnect();
-      if (reconnectInterval) {
-        clearInterval(reconnectInterval);
-        reconnectInterval = null;
-      }
-      if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
-      }
-    }
-  };
-  const connect = () => {
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-      console.log("[Wireless] Already connected or connecting, skipping...");
-      return;
-    }
-    const url = `ws://${wireless.settings.host}:${wireless.settings.port}`;
-    console.log(`[Wireless] Connecting to ${url}...`);
-    try {
-      ws = new WebSocket(url);
-      ws.onopen = () => {
-        console.log("[Wireless] \u2713 Connected to Desktop Bridge");
-        ws.send(JSON.stringify({
-          type: "handshake",
-          client: "mcraft-anticlient",
-          version: "1.0.0"
-        }));
-      };
-      ws.onclose = (event) => {
-        console.log("[Wireless] \u2717 Disconnected", event.code, event.reason);
-        ws = null;
-      };
-      ws.onerror = (err) => {
-        console.error("[Wireless] \u2717 WebSocket Error:", err);
-      };
-      ws.onmessage = (msg) => {
-        try {
-          const data = JSON.parse(msg.data);
-          handleMessage(data);
-        } catch (e) {
-          console.error("[Wireless] Failed to parse message:", e);
-        }
-      };
-    } catch (e) {
-      console.error("[Wireless] Connection failed:", e);
-    }
-  };
-  const disconnect = () => {
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
-  };
-  const sendUpdate = () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    if (!window.bot || !window.bot.entity) return;
-    try {
-      const update = {
-        type: "update",
-        timestamp: Date.now()
-      };
-      if (wireless.settings.shareInventory && window.bot.inventory) {
-        update.inventory = window.bot.inventory.items().map((item) => ({
-          name: item.name,
-          count: item.count,
-          slot: item.slot
-        }));
-      }
-      if (wireless.settings.shareViewport && window.bot.entity && window.bot.entity.position) {
-        update.position = window.bot.entity.position;
-        update.yaw = window.bot.entity.yaw;
-        update.pitch = window.bot.entity.pitch;
-        update.health = window.bot.health;
-        update.food = window.bot.food;
-        const blocks = [];
-        const pos = window.bot.entity.position;
-        const range = 40;
-        for (let x = Math.floor(pos.x) - range; x <= Math.floor(pos.x) + range; x++) {
-          for (let y = Math.floor(pos.y) - range; y <= Math.floor(pos.y) + range; y++) {
-            for (let z = Math.floor(pos.z) - range; z <= Math.floor(pos.z) + range; z++) {
-              const block = window.bot.blockAt(new window.bot.world.Vec3(x, y, z));
-              if (block && block.name !== "air") {
-                blocks.push({
-                  name: block.name,
-                  x,
-                  y,
-                  z
-                });
-              }
-            }
-          }
-        }
-        update.blocks = blocks;
-      }
-      if (update.position || update.inventory) {
-        ws.send(JSON.stringify(update));
-      }
-    } catch (e) {
-      console.error("[Wireless] Error sending update:", e);
-    }
-  };
-  const handleMessage = (data) => {
-    if (data.type === "command") {
-      if (data.command === "chat") {
-        window.bot.chat(data.message);
-      } else if (data.command === "move") {
-        window.bot.setControlState(data.control, data.state);
-      } else if (data.command === "inventory_click") {
-        if (window.bot.inventory) {
-          try {
-            window.bot.simpleClick.leftClick(data.slot).catch((err) => console.error(err));
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      } else if (data.command === "drop_slot") {
-        if (window.bot.inventory) {
-          const item = window.bot.inventory.slots[data.slot];
-          if (item) {
-            window.bot.tossStack(item).catch((err) => console.error(err));
-          }
-        }
-      }
-    }
-  };
-  registerModule(wireless);
-};
-
-// src/modules/client.js
 var loadClientModules = () => {
   const settings = new Module("client_settings", "Client Settings", "Settings", "Client configuration", {
     theme: "Default",
@@ -1770,7 +1717,7 @@ var loadClientModules = () => {
   registerModule(settings);
 };
 
-// src/modules/packets.js
+// anticlient/src/modules/packets.js
 init_Module();
 var loadPacketsModules = () => {
   const packetViewer = new Module("packetviewer", "Packet Viewer", "Packets", "View all Minecraft network packets", {
@@ -2053,10 +2000,10 @@ var loadPacketsModules = () => {
   registerModule(fakeLag);
 };
 
-// entry.js
+// anticlient/entry.js
 init_Module();
 
-// src/ui/index.js
+// anticlient/src/ui/index.js
 init_Module();
 var initUI = () => {
   const existingRoot = document.getElementById("anticlient-root");
@@ -2073,7 +2020,18 @@ var initUI = () => {
   uiRoot.style.userSelect = "none";
   uiRoot.style.display = "none";
   const toggleUi = () => {
-    uiRoot.style.display = uiRoot.style.display === "none" ? "block" : "none";
+    const isOpening = uiRoot.style.display === "none";
+    uiRoot.style.display = isOpening ? "block" : "none";
+    if (window.activeModalStack) {
+      if (isOpening) {
+        window.activeModalStack.push("anticlient-menu");
+      } else {
+        const index = window.activeModalStack.indexOf("anticlient-menu");
+        if (index > -1) {
+          window.activeModalStack.splice(index, 1);
+        }
+      }
+    }
   };
   const keydownHandler = (e) => {
     if (e.code === "ShiftRight" && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
@@ -3736,7 +3694,7 @@ var initUI = () => {
   };
 };
 
-// src/logger.js
+// anticlient/src/logger.js
 var LogLevel = {
   DEBUG: 0,
   INFO: 1,
@@ -3798,7 +3756,7 @@ if (typeof window !== "undefined") {
   window.anticlientLogger = logger;
 }
 
-// entry.js
+// anticlient/entry.js
 var entry_default = (mod) => {
   if (window.anticlient && window.anticlient.cleanup) {
     try {
@@ -3815,7 +3773,6 @@ var entry_default = (mod) => {
   loadWorldModules();
   loadClientModules();
   loadPacketsModules();
-  loadNetworkModules();
   const loggerSettings = new Module(
     "loggersettings",
     "Logger Settings",

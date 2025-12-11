@@ -390,4 +390,146 @@ export const loadPlayerModules = () => {
     }
 
     registerModule(packetMine)
+
+    // -- Anti-AFK --
+    const antiAfk = new Module('antiafk', 'Anti-AFK', 'Player', 'Walks in random patterns to bypass AFK detection', {
+        enabled: false,
+        area: 3, // 3x3 area
+        walkSpeed: 0.5, // seconds between movements
+        jumpChance: 0.1, // 10% chance to jump
+        rotateChance: 0.3 // 30% chance to rotate view
+    })
+
+    let afkInterval = null
+    let afkStartPosition = null
+    let currentAfkAction = null
+
+    antiAfk.onToggle = (enabled) => {
+        const log = window.anticlientLogger?.module('AntiAFK')
+        
+        if (enabled) {
+            if (!window.bot || !window.bot.entity) {
+                if (log) log.warning('Bot not available, waiting...')
+                // Try again in a moment
+                setTimeout(() => {
+                    if (antiAfk.enabled) antiAfk.toggle()
+                }, 1000)
+                return
+            }
+
+            // Store starting position
+            afkStartPosition = window.bot.entity.position.clone()
+            if (log) log.info(`Anti-AFK enabled at position ${afkStartPosition.x.toFixed(1)}, ${afkStartPosition.y.toFixed(1)}, ${afkStartPosition.z.toFixed(1)}`)
+
+            // Start random movement loop
+            afkInterval = setInterval(() => {
+                if (!window.bot || !window.bot.entity || !afkStartPosition) return
+
+                const bot = window.bot
+
+                // Stop any current movement
+                bot.setControlState('forward', false)
+                bot.setControlState('back', false)
+                bot.setControlState('left', false)
+                bot.setControlState('right', false)
+                bot.setControlState('jump', false)
+
+                // Check if we're too far from start position
+                const currentPos = bot.entity.position
+                const distance = currentPos.distanceTo(afkStartPosition)
+                const maxDistance = antiAfk.settings.area / 2
+
+                // If too far, move back towards start
+                if (distance > maxDistance) {
+                    const direction = afkStartPosition.clone().subtract(currentPos).normalize()
+                    const yaw = Math.atan2(-direction.x, -direction.z)
+                    bot.look(yaw, 0, true)
+                    bot.setControlState('forward', true)
+                    
+                    if (log && log.level <= 0) log.debug('Too far, returning to start position')
+                    
+                    setTimeout(() => {
+                        bot.setControlState('forward', false)
+                    }, 500)
+                    return
+                }
+
+                // Random action: walk, jump, or rotate
+                const actions = ['walk', 'rotate', 'jump', 'idle']
+                const randomAction = actions[Math.floor(Math.random() * actions.length)]
+
+                switch (randomAction) {
+                    case 'walk':
+                        // Random direction (forward, back, left, right)
+                        const directions = ['forward', 'back', 'left', 'right']
+                        const randomDir = directions[Math.floor(Math.random() * directions.length)]
+                        
+                        bot.setControlState(randomDir, true)
+                        if (log && log.level <= 0) log.debug(`Walking ${randomDir}`)
+                        
+                        setTimeout(() => {
+                            bot.setControlState(randomDir, false)
+                        }, Math.random() * 1000 + 500)
+                        break
+
+                    case 'rotate':
+                        // Random rotation
+                        const randomYaw = bot.entity.yaw + (Math.random() * Math.PI - Math.PI / 2)
+                        const randomPitch = (Math.random() * 0.5 - 0.25)
+                        bot.look(randomYaw, randomPitch, true)
+                        if (log && log.level <= 0) log.debug('Rotating view')
+                        break
+
+                    case 'jump':
+                        if (bot.entity.onGround) {
+                            bot.setControlState('jump', true)
+                            if (log && log.level <= 0) log.debug('Jumping')
+                            setTimeout(() => {
+                                bot.setControlState('jump', false)
+                            }, 100)
+                        }
+                        break
+
+                    case 'idle':
+                        // Do nothing for this tick
+                        if (log && log.level <= 0) log.debug('Idle')
+                        break
+                }
+
+            }, antiAfk.settings.walkSpeed * 1000)
+
+            if (log) log.info('Anti-AFK movement started')
+
+        } else {
+            // Stop movement
+            if (afkInterval) {
+                clearInterval(afkInterval)
+                afkInterval = null
+            }
+
+            if (window.bot) {
+                window.bot.setControlState('forward', false)
+                window.bot.setControlState('back', false)
+                window.bot.setControlState('left', false)
+                window.bot.setControlState('right', false)
+                window.bot.setControlState('jump', false)
+            }
+
+            afkStartPosition = null
+            if (log) log.info('Anti-AFK disabled')
+        }
+    }
+
+    antiAfk.onSettingChanged = (key, newValue) => {
+        const log = window.anticlientLogger?.module('AntiAFK')
+        if (key === 'walkSpeed' && afkInterval && antiAfk.enabled) {
+            // Restart interval with new speed
+            if (log) log.info(`Walk speed changed to ${newValue}s`)
+            antiAfk.toggle() // disable
+            setTimeout(() => antiAfk.toggle(), 100) // re-enable
+        }
+    }
+
+    registerModule(antiAfk)
 }
+
