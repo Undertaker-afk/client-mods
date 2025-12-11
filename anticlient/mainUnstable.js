@@ -40,6 +40,7 @@ var init_Module = __esm({
         this.bind = null;
         this.uiElement = null;
         this.settingsMetadata = settingsMetadata;
+        this.customKeybind = false;
         this.settings = new Proxy(defaultSettings, {
           set: (target, prop, value) => {
             const oldValue = target[prop];
@@ -595,6 +596,7 @@ var loadMovementModules = () => {
     trailColor: "#ff00ff"
     // Trail color
   });
+  blink.customKeybind = true;
   let positionHistory = [];
   let isRecording = false;
   let recordStartPos = null;
@@ -607,12 +609,22 @@ var loadMovementModules = () => {
     startPos: recordStartPos
   });
   blink.getPositionHistory = () => positionHistory;
+  const updateBlinkUI = () => {
+    if (!window.anticlient) window.anticlient = {};
+    const info = blink.getHUDInfo();
+    window.anticlient.blinkUI = {
+      active: info.active,
+      positions: info.positions,
+      duration: info.duration
+    };
+  };
   blink.onToggle = (enabled) => {
     const log = window.anticlientLogger?.module("Blink");
     if (!enabled) {
       positionHistory = [];
       isRecording = false;
       recordStartPos = null;
+      updateBlinkUI();
       if (log) log.info("Blink disabled, history cleared");
     } else {
       if (log) log.info("Blink enabled - Hold keybind to record path, release to teleport back");
@@ -629,6 +641,7 @@ var loadMovementModules = () => {
         });
         const cutoffTime = now - blink.settings.maxRecordTime;
         positionHistory = positionHistory.filter((p) => p.time >= cutoffTime);
+        updateBlinkUI();
       }
     }
   };
@@ -643,6 +656,7 @@ var loadMovementModules = () => {
         pos: recordStartPos.clone(),
         time: recordStartTime
       }];
+      updateBlinkUI();
       if (log) log.info("Blink recording started");
     }
   });
@@ -660,6 +674,7 @@ var loadMovementModules = () => {
       }
       setTimeout(() => {
         positionHistory = [];
+        updateBlinkUI();
       }, 100);
     }
   });
@@ -2043,7 +2058,7 @@ var initUI = () => {
     }
     if (!document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
       Object.values(modules).forEach((mod) => {
-        if (mod.bind && e.code === mod.bind) {
+        if (mod.bind && e.code === mod.bind && !mod.customKeybind) {
           mod.toggle();
         }
       });

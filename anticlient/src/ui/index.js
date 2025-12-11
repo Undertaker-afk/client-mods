@@ -47,7 +47,7 @@ export const initUI = () => {
         }
         if (!document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
             Object.values(modules).forEach(mod => {
-                if (mod.bind && e.code === mod.bind) {
+                if (mod.bind && e.code === mod.bind && !mod.customKeybind) {
                     mod.toggle()
                 }
             })

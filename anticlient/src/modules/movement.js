@@ -347,6 +347,9 @@ export const loadMovementModules = () => {
         trailColor: '#ff00ff' // Trail color
     })
 
+    // Set custom keybind flag (don't toggle on keybind press)
+    blink.customKeybind = true
+
     let positionHistory = [] // Array of {pos, time}
     let isRecording = false
     let recordStartPos = null
@@ -364,12 +367,24 @@ export const loadMovementModules = () => {
     // Expose position history for rendering
     blink.getPositionHistory = () => positionHistory
 
+    // Update window.anticlient.blinkUI for HUD display
+    const updateBlinkUI = () => {
+        if (!window.anticlient) window.anticlient = {}
+        const info = blink.getHUDInfo()
+        window.anticlient.blinkUI = {
+            active: info.active,
+            positions: info.positions,
+            duration: info.duration
+        }
+    }
+
     blink.onToggle = (enabled) => {
         const log = window.anticlientLogger?.module('Blink')
         if (!enabled) {
             positionHistory = []
             isRecording = false
             recordStartPos = null
+            updateBlinkUI()
             if (log) log.info('Blink disabled, history cleared')
         } else {
             if (log) log.info('Blink enabled - Hold keybind to record path, release to teleport back')
@@ -392,6 +407,9 @@ export const loadMovementModules = () => {
                 // Limit history to maxRecordTime (remove oldest)
                 const cutoffTime = now - blink.settings.maxRecordTime
                 positionHistory = positionHistory.filter(p => p.time >= cutoffTime)
+
+                // Update HUD
+                updateBlinkUI()
             }
         }
     }
@@ -410,6 +428,7 @@ export const loadMovementModules = () => {
                 time: recordStartTime
             }]
 
+            updateBlinkUI()
             if (log) log.info('Blink recording started')
         }
     })
@@ -435,6 +454,7 @@ export const loadMovementModules = () => {
             // Clear history after short delay
             setTimeout(() => {
                 positionHistory = []
+                updateBlinkUI()
             }, 100)
         }
     })

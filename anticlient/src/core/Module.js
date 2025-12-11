@@ -9,6 +9,7 @@ export class Module {
         this.bind = null
         this.uiElement = null
         this.settingsMetadata = settingsMetadata // { settingKey: { type: 'dropdown', options: [...] } }
+        this.customKeybind = false // Set to true if module has custom keybind handling
 
         // Wrap settings in a Proxy to detect changes
         this.settings = new Proxy(defaultSettings, {
