@@ -381,14 +381,21 @@ export const worldReady = (world) => {
         const xrayData = window.anticlient.visuals
         const xrayEnabled = xrayData?.xray
         const settings = xrayData?.xraySettings
+        
+        // Track if seethrough was active (for cleanup)
+        const wasSeeThroughActive = xrayState.active && xrayState.mode === 'seethrough'
 
         if (!xrayEnabled) {
             // Xray disabled - cleanup
             if (xrayState.active) {
-                if (xrayState.mode === 'seethrough') {
+                // Always try to remove seethrough effect if it was active OR if we have stored original props
+                if (wasSeeThroughActive || xrayState.originalMaterialProps) {
+                    const log = window.anticlientLogger?.module('XRay')
+                    if (log) log.info('Cleaning up see-through effect on disable')
                     removeSeeThroughEffect()
                 }
                 xrayState.active = false
+                xrayState.mode = null
             }
             // Hide highlight meshes
             for (const meshData of xrayMeshes.values()) {
@@ -401,8 +408,10 @@ export const worldReady = (world) => {
 
         // Handle mode switching
         if (xrayState.active && xrayState.mode !== mode) {
-            // Mode changed - cleanup previous mode
-            if (xrayState.mode === 'seethrough') {
+            // Mode changed - cleanup previous mode if we have stored material props
+            if (xrayState.originalMaterialProps) {
+                const log = window.anticlientLogger?.module('XRay')
+                if (log) log.info('Cleaning up see-through effect on mode switch')
                 removeSeeThroughEffect()
             }
             xrayState.active = false
@@ -423,6 +432,9 @@ export const worldReady = (world) => {
     // ==========================================
 
     const update = () => {
+        // Always run Xray update for proper cleanup, even if bot isn't ready
+        updateXray()
+
         if (!window.bot || !window.bot.entities || !window.bot.entity || !window.bot.entity.position) return
 
         const settings = window.anticlient.visuals.espSettings || { playerColor: '#00ffff', mobColor: '#ff0000' }
@@ -837,8 +849,7 @@ export const worldReady = (world) => {
             }
         }
 
-        // --- X-Ray System ---
-        updateXray()
+        // NOTE: X-Ray is now called at start of update() for proper cleanup
 
         // Cleanup entities
         for (const id of meshes.keys()) {
