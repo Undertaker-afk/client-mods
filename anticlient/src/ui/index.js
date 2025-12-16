@@ -217,7 +217,23 @@ export const initUI = () => {
             .ac-content { padding: 15px; flex: 1; overflow-y: auto; min-width: 0; }
             .ac-body { display: flex; flex: 1; overflow: hidden; }
             .ac-module-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
-            .ac-module-name { font-weight: bold; }
+            .ac-module-name { font-weight: bold; flex: 1; }
+            .ac-module-expand { 
+                padding: 5px 10px; 
+                font-size: 0.9em; 
+                color: #888; 
+                cursor: pointer; 
+                transition: transform 0.2s, color 0.2s;
+                user-select: none;
+                -webkit-tap-highlight-color: transparent;
+                min-width: 30px;
+                min-height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .ac-module-expand:hover { color: #fff; }
+            .ac-module-expand.open { transform: rotate(180deg); color: #b388ff; }
             .ac-module-settings { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); display: none; }
             .ac-module-settings.open { display: flex; flex-direction: column; gap: 8px; }
             .ac-preview-panel { width: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; flex-shrink: 0; }
@@ -703,12 +719,47 @@ export const initUI = () => {
 
             const header = document.createElement('div')
             header.className = 'ac-module-header'
-            header.innerHTML = `<span class="ac-module-name">${mod.name}</span> <span style="font-size:0.8em; color: #555">▼</span>`
-            header.onclick = () => mod.toggle()
+            
+            const moduleName = document.createElement('span')
+            moduleName.className = 'ac-module-name'
+            moduleName.textContent = mod.name
+            moduleName.onclick = (e) => {
+                e.stopPropagation()
+                mod.toggle()
+            }
+            // Touch support for toggling
+            moduleName.ontouchend = (e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                mod.toggle()
+            }
+            header.appendChild(moduleName)
+            
+            const expandBtn = document.createElement('span')
+            expandBtn.className = 'ac-module-expand'
+            expandBtn.innerHTML = '▼'
+            expandBtn.onclick = (e) => {
+                e.stopPropagation()
+                const settingsEl = modEl.querySelector('.ac-module-settings')
+                settingsEl.classList.toggle('open')
+                expandBtn.classList.toggle('open')
+            }
+            // Touch support for expanding
+            expandBtn.ontouchend = (e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const settingsEl = modEl.querySelector('.ac-module-settings')
+                settingsEl.classList.toggle('open')
+                expandBtn.classList.toggle('open')
+            }
+            header.appendChild(expandBtn)
+            
+            // Keep right-click for desktop users
             header.oncontextmenu = (e) => {
                 e.preventDefault()
                 const settingsEl = modEl.querySelector('.ac-module-settings')
                 settingsEl.classList.toggle('open')
+                expandBtn.classList.toggle('open')
             }
             modEl.appendChild(header)
 
