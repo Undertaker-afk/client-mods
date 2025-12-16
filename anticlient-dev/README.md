@@ -122,6 +122,33 @@ export function cleanup(ctx) {
 | `ctx.bot` | Bot instance (after `waitForBot()`) |
 | `ctx.THREE` | Three.js library |
 
+## Minimap Features
+
+The current test implements an enhanced minimap with the following features:
+
+### Basic Minimap
+- Real-time top-down terrain view
+- Player position and direction indicator
+- Entity tracking (players, mobs)
+- Zoom controls (0.5x, 1x, 2x, 4x)
+- Height-based terrain shading
+- Compass directions (N, S, E, W)
+
+### Chunk-Based World Map
+- Press **M** to open the expanded world map
+- Automatically captures 16x16 chunk images as you explore
+- Captures nearby chunks every 5 seconds
+- Displays all seen chunks stitched together with correct positions
+- Shows your current position on the world map
+- Visible chunk borders for reference
+
+### Technical Details
+- Uses Three.js orthographic camera for chunk capture
+- 64x64 pixel resolution per chunk
+- Canvas-based rendering for performance
+- Chunk caching system to store explored areas
+- Height scanning with terrain color mapping
+
 ## Tips
 
 - Always clean up objects in `cleanup()` to avoid memory leaks

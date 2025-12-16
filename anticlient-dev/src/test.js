@@ -278,9 +278,7 @@ class Minimap {
         // Chunk-based rendering
         this.chunkSize = 16 // Minecraft chunk size
         this.chunkCache = new Map() // Store rendered chunk images
-        this.chunkCaptureCamera = null
-        this.chunkCaptureScene = null
-        this.chunkRenderTarget = null
+        this.maxChunkCacheSize = 200 // Limit cache to 200 chunks (~12.8MB)
         this.lastChunkCapture = 0
         
         // World map
@@ -294,9 +292,6 @@ class Minimap {
         // Zoom controls
         this.ui.zoomInBtn.onclick = () => this.changeZoom(1)
         this.ui.zoomOutBtn.onclick = () => this.changeZoom(-1)
-        
-        // Initialize chunk capture system
-        this.initChunkCapture()
         
         // Set up world map keybind
         this.setupWorldMapKeybind()
@@ -518,32 +513,6 @@ class Minimap {
     }
     
     /**
-     * Initialize chunk capture system with Three.js camera
-     */
-    initChunkCapture() {
-        const THREE = window.THREE
-        if (!THREE) {
-            logger.warn('THREE.js not available for chunk capture')
-            return
-        }
-        
-        // Create orthographic camera for top-down view
-        const chunkPixelSize = 64 // pixels per chunk
-        this.chunkCaptureCamera = new THREE.OrthographicCamera(
-            -this.chunkSize / 2, this.chunkSize / 2,
-            this.chunkSize / 2, -this.chunkSize / 2,
-            0.1, 1000
-        )
-        this.chunkCaptureCamera.position.set(0, 150, 0)
-        this.chunkCaptureCamera.lookAt(0, 0, 0)
-        
-        // Create render target for capturing chunks
-        this.chunkRenderTarget = new THREE.WebGLRenderTarget(chunkPixelSize, chunkPixelSize)
-        
-        logger.log('Chunk capture system initialized')
-    }
-    
-    /**
      * Set up world map keybind (M key)
      */
     setupWorldMapKeybind() {
@@ -585,6 +554,24 @@ class Minimap {
         // Return cached if available
         if (this.chunkCache.has(chunkKey)) {
             return this.chunkCache.get(chunkKey)
+        }
+        
+        // Check cache size limit and remove oldest chunks if needed
+        if (this.chunkCache.size >= this.maxChunkCacheSize) {
+            let oldestKey = null
+            let oldestTime = Infinity
+            
+            for (const [key, chunk] of this.chunkCache.entries()) {
+                if (chunk.timestamp < oldestTime) {
+                    oldestTime = chunk.timestamp
+                    oldestKey = key
+                }
+            }
+            
+            if (oldestKey) {
+                this.chunkCache.delete(oldestKey)
+                logger.log(`Removed old chunk from cache: ${oldestKey}`)
+            }
         }
         
         // Create canvas for this chunk
@@ -699,6 +686,7 @@ class Minimap {
         
         document.body.appendChild(container)
         
+        // Query elements after they're added to DOM
         return {
             container,
             canvas,
@@ -849,11 +837,6 @@ class Minimap {
         if (this.worldMapUI?.container) {
             this.worldMapUI.container.remove()
             this.worldMapUI = null
-        }
-        
-        if (this.chunkRenderTarget) {
-            this.chunkRenderTarget.dispose()
-            this.chunkRenderTarget = null
         }
         
         this.clearCache()

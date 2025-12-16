@@ -382,9 +382,7 @@ var Minimap = class {
     this.lastCacheClear = Date.now();
     this.chunkSize = 16;
     this.chunkCache = /* @__PURE__ */ new Map();
-    this.chunkCaptureCamera = null;
-    this.chunkCaptureScene = null;
-    this.chunkRenderTarget = null;
+    this.maxChunkCacheSize = 200;
     this.lastChunkCapture = 0;
     this.worldMapOpen = false;
     this.worldMapUI = null;
@@ -393,7 +391,6 @@ var Minimap = class {
     this.ui = createMinimapUI();
     this.ui.zoomInBtn.onclick = () => this.changeZoom(1);
     this.ui.zoomOutBtn.onclick = () => this.changeZoom(-1);
-    this.initChunkCapture();
     this.setupWorldMapKeybind();
     this.updateInterval = setInterval(() => this.update(), 100);
     logger.log("Minimap initialized");
@@ -550,29 +547,6 @@ var Minimap = class {
     ctx.fillText("E", canvas.width - 4, canvas.height / 2 + 4);
   }
   /**
-   * Initialize chunk capture system with Three.js camera
-   */
-  initChunkCapture() {
-    const THREE = window.THREE;
-    if (!THREE) {
-      logger.warn("THREE.js not available for chunk capture");
-      return;
-    }
-    const chunkPixelSize = 64;
-    this.chunkCaptureCamera = new THREE.OrthographicCamera(
-      -this.chunkSize / 2,
-      this.chunkSize / 2,
-      this.chunkSize / 2,
-      -this.chunkSize / 2,
-      0.1,
-      1e3
-    );
-    this.chunkCaptureCamera.position.set(0, 150, 0);
-    this.chunkCaptureCamera.lookAt(0, 0, 0);
-    this.chunkRenderTarget = new THREE.WebGLRenderTarget(chunkPixelSize, chunkPixelSize);
-    logger.log("Chunk capture system initialized");
-  }
-  /**
    * Set up world map keybind (M key)
    */
   setupWorldMapKeybind() {
@@ -608,6 +582,20 @@ var Minimap = class {
     const chunkKey = this.getChunkKey(chunkX, chunkZ);
     if (this.chunkCache.has(chunkKey)) {
       return this.chunkCache.get(chunkKey);
+    }
+    if (this.chunkCache.size >= this.maxChunkCacheSize) {
+      let oldestKey = null;
+      let oldestTime = Infinity;
+      for (const [key, chunk] of this.chunkCache.entries()) {
+        if (chunk.timestamp < oldestTime) {
+          oldestTime = chunk.timestamp;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey) {
+        this.chunkCache.delete(oldestKey);
+        logger.log(`Removed old chunk from cache: ${oldestKey}`);
+      }
     }
     const chunkCanvas = document.createElement("canvas");
     chunkCanvas.width = 64;
@@ -811,10 +799,6 @@ var Minimap = class {
     if (this.worldMapUI?.container) {
       this.worldMapUI.container.remove();
       this.worldMapUI = null;
-    }
-    if (this.chunkRenderTarget) {
-      this.chunkRenderTarget.dispose();
-      this.chunkRenderTarget = null;
     }
     this.clearCache();
     this.chunkCache.clear();
