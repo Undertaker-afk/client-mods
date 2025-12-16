@@ -19,7 +19,7 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// danticlient/src/core/Module.js
+// anticlient/src/core/Module.js
 var Module_exports = {};
 __export(Module_exports, {
   Module: () => Module,
