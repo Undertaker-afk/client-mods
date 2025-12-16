@@ -143,11 +143,12 @@ The current test implements an enhanced minimap with the following features:
 - Visible chunk borders for reference
 
 ### Technical Details
-- Uses Three.js orthographic camera for chunk capture
-- 64x64 pixel resolution per chunk
-- Canvas-based rendering for performance
-- Chunk caching system to store explored areas
+- Canvas-based 2D rendering for optimal performance
+- 64x64 pixel resolution per chunk (4 pixels per block)
+- Chunk caching system with 200 chunk limit (~12.8MB max)
+- LRU eviction to manage memory usage
 - Height scanning with terrain color mapping
+- Automatic capture radius of 1 chunk around player
 
 ## Tips
 
