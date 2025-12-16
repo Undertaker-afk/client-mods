@@ -235,6 +235,11 @@ export const loadWorldModules = () => {
     }
 
     xray.onTick = (bot) => {
+        // Always update settings for the renderer
+        if (window.anticlient?.visuals) {
+            window.anticlient.visuals.xraySettings = xray.settings
+        }
+
         // Highlight mode: scan for blocks
         if (xray.settings.mode === 'highlight') {
             if (Date.now() - xray.lastScan > 1000) {
@@ -249,14 +254,15 @@ export const loadWorldModules = () => {
                 xray.lastScan = Date.now()
             }
         }
-        // Seethrough opacity mode: update opacity settings
-        else if (xray.settings.mode === 'seethrough' && xray.settings.seeThroughMode === 'opacity') {
+        // Seethrough mode: ensure settings are always available
+        else if (xray.settings.mode === 'seethrough') {
             if (window.anticlient?.visuals) {
                 window.anticlient.visuals.xrayOpacity = {
                     enabled: true,
                     hideBlocks: xray.settings.hideBlocks,
                     opacity: xray.settings.opacity,
-                    showBlocks: xray.settings.blocks
+                    showBlocks: xray.settings.blocks,
+                    seeThroughMode: xray.settings.seeThroughMode
                 }
             }
         }

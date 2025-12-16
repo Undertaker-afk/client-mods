@@ -6,6 +6,12 @@
             "scriptMainUnstable": true,
             "threeJsBackend": true,
             "description": "Hacked client for 2b2t \nLatest: Freecam Interaction, Bow Aimbot, W-Tap, Phase, Long Jump, Boat Fly, Safe Walk, Waypoints, Chunk Borders, Light Overlay, Trajectory, Search, Timer, Ping Spoof, Middle Click Friend"
+        },
+        {
+            "name": "anticlient-dev",
+            "version": "0.1.0",
+            "scriptMainUnstable": true,
+            "description": "Debug & Testing Sandbox for Anticlient development. Exposes window.acDev API for console experimentation."
         }
     ]
 }

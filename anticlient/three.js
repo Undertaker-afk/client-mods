@@ -11,12 +11,24 @@ export const worldReady = (world) => {
     const tracerLines = new Map() // ID -> THREE.Line
     const storageMeshes = new Map() // PosString -> THREE.LineSegments
     const blockEspMeshes = new Map() // PosString -> THREE.LineSegments
+    const xrayMeshes = new Map() // PosString -> THREE.LineSegments (for highlight mode)
     let miningOverlay = null // Mining progress overlay
+
+    // Xray state tracking
+    let xrayState = {
+        active: false,
+        mode: 'highlight',
+        seeThroughMode: 'glass',
+        lastSettings: null,
+        originalMaterialProps: null, // Store original material properties
+        modifiedSections: new Set() // Track which sections we've modified
+    }
 
     const material = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true, opacity: 1.0, linewidth: 2 })
     const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.8, linewidth: 2 })
     const storageMaterial = new THREE.LineBasicMaterial({ color: 0xffa500, depthTest: false, transparent: true, opacity: 1.0, linewidth: 2 })
     const blockEspMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true, opacity: 1.0, linewidth: 2 })
+    const xrayMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, transparent: true, opacity: 1.0, linewidth: 3 })
 
     // Create sprite for text labels
     const createTextSprite = (text, color = '#ffffff') => {
@@ -44,6 +56,371 @@ export const worldReady = (world) => {
 
     // Helper to get hex from string
     const parseColor = (str) => parseInt(str.replace('#', '0x'), 16)
+
+    // ==========================================
+    // XRAY SYSTEM - Direct Renderer Hook
+    // ==========================================
+    
+    /**
+     * Xray Highlight Mode - Creates wireframe boxes around target blocks
+     * Uses xrayBlocks data from world.js module
+     */
+    const updateXrayHighlight = () => {
+        const xrayData = window.anticlient.visuals
+        const active = xrayData?.xray && xrayData?.xraySettings?.mode === 'highlight'
+        const xrayBlocks = xrayData?.xrayBlocks || []
+        const settings = xrayData?.xraySettings || { color: '#00ff00' }
+        const xColor = parseColor(settings.color)
+
+        if (active && xrayBlocks.length > 0) {
+            const currentKeys = new Set()
+            const log = window.anticlientLogger?.module('XRay-Highlight')
+
+            for (const vec of xrayBlocks) {
+                const key = `xray_${vec.x},${vec.y},${vec.z}`
+                currentKeys.add(key)
+
+                if (!xrayMeshes.has(key)) {
+                    // Create wireframe box
+                    const geometry = new THREE.BoxGeometry(1.02, 1.02, 1.02)
+                    const edges = new THREE.EdgesGeometry(geometry)
+                    const xrayMat = xrayMaterial.clone()
+                    xrayMat.color.setHex(xColor)
+                    const line = new THREE.LineSegments(edges, xrayMat)
+                    line.frustumCulled = false
+                    line.renderOrder = 990 // Render on top
+
+                    // Add filled transparent box for better visibility
+                    const fillGeometry = new THREE.BoxGeometry(1.01, 1.01, 1.01)
+                    const fillMaterial = new THREE.MeshBasicMaterial({
+                        color: xColor,
+                        transparent: true,
+                        opacity: 0.15,
+                        depthTest: false,
+                        depthWrite: false,
+                        side: THREE.DoubleSide
+                    })
+                    const fillMesh = new THREE.Mesh(fillGeometry, fillMaterial)
+                    fillMesh.frustumCulled = false
+                    fillMesh.renderOrder = 989
+
+                    // Group them together
+                    const group = new THREE.Group()
+                    group.add(line)
+                    group.add(fillMesh)
+                    group.position.set(vec.x + 0.5, vec.y + 0.5, vec.z + 0.5)
+                    
+                    world.scene.add(group)
+                    xrayMeshes.set(key, { group, line, fill: fillMesh })
+
+                    if (log) log.debug(`Created Xray highlight at ${key}`)
+                }
+
+                const meshData = xrayMeshes.get(key)
+                meshData.group.visible = true
+                meshData.line.material.color.setHex(xColor)
+                meshData.fill.material.color.setHex(xColor)
+            }
+
+            // Hide meshes not in current list
+            for (const [key, meshData] of xrayMeshes.entries()) {
+                if (!currentKeys.has(key)) {
+                    meshData.group.visible = false
+                }
+            }
+        } else {
+            // Hide all xray meshes
+            for (const meshData of xrayMeshes.values()) {
+                meshData.group.visible = false
+            }
+        }
+    }
+
+    /**
+     * Xray See-Through Mode - Modifies world material opacity
+     * Glass mode: Makes terrain semi-transparent
+     * Opacity mode: Uses custom opacity value
+     */
+    const updateXraySeeThrough = () => {
+        const xrayData = window.anticlient.visuals
+        const active = xrayData?.xray && xrayData?.xraySettings?.mode === 'seethrough'
+        const settings = xrayData?.xraySettings || {}
+        const seeThroughMode = settings.seeThroughMode || 'glass'
+        const opacity = settings.opacity || 0.3
+
+        // Check if we need to apply or remove see-through effect
+        const shouldBeActive = active
+        const wasActive = xrayState.active && xrayState.mode === 'seethrough'
+
+        if (shouldBeActive && !wasActive) {
+            // Activate see-through mode
+            applySeeThroughEffect(seeThroughMode, opacity)
+            xrayState.active = true
+            xrayState.mode = 'seethrough'
+            xrayState.seeThroughMode = seeThroughMode
+            
+            const log = window.anticlientLogger?.module('XRay-SeeThrough')
+            if (log) log.info(`Activated ${seeThroughMode} mode with opacity ${opacity}`)
+        } else if (!shouldBeActive && wasActive) {
+            // Deactivate see-through mode
+            removeSeeThroughEffect()
+            xrayState.active = false
+            
+            const log = window.anticlientLogger?.module('XRay-SeeThrough')
+            if (log) log.info('Deactivated see-through mode')
+        } else if (shouldBeActive && wasActive) {
+            // Update settings if changed
+            if (xrayState.seeThroughMode !== seeThroughMode || xrayState.lastSettings?.opacity !== opacity) {
+                updateSeeThroughEffect(seeThroughMode, opacity)
+                xrayState.seeThroughMode = seeThroughMode
+            }
+        }
+
+        xrayState.lastSettings = { ...settings }
+    }
+
+    /**
+     * Apply see-through effect to world material
+     */
+    const applySeeThroughEffect = (mode, opacity) => {
+        // Store original material properties if not stored
+        if (!xrayState.originalMaterialProps && world.material) {
+            xrayState.originalMaterialProps = {
+                transparent: world.material.transparent,
+                opacity: world.material.opacity,
+                depthWrite: world.material.depthWrite,
+                alphaTest: world.material.alphaTest
+            }
+        }
+
+        // Modify the main world material
+        if (world.material) {
+            world.material.transparent = true
+            world.material.needsUpdate = true
+
+            if (mode === 'glass') {
+                world.material.opacity = 0.4
+                world.material.depthWrite = false
+            } else if (mode === 'opacity') {
+                world.material.opacity = opacity
+                world.material.depthWrite = opacity > 0.5
+            }
+        }
+
+        // Also modify section objects for more comprehensive effect
+        modifySectionMaterials(mode, opacity)
+    }
+
+    /**
+     * Remove see-through effect and restore original material
+     */
+    const removeSeeThroughEffect = () => {
+        // Restore main material
+        if (world.material && xrayState.originalMaterialProps) {
+            world.material.transparent = xrayState.originalMaterialProps.transparent
+            world.material.opacity = xrayState.originalMaterialProps.opacity
+            world.material.depthWrite = xrayState.originalMaterialProps.depthWrite
+            world.material.alphaTest = xrayState.originalMaterialProps.alphaTest
+            world.material.needsUpdate = true
+        }
+
+        // Restore section materials
+        restoreSectionMaterials()
+        
+        xrayState.originalMaterialProps = null
+        xrayState.modifiedSections.clear()
+    }
+
+    /**
+     * Update see-through effect with new settings
+     */
+    const updateSeeThroughEffect = (mode, opacity) => {
+        if (world.material) {
+            if (mode === 'glass') {
+                world.material.opacity = 0.4
+                world.material.depthWrite = false
+            } else if (mode === 'opacity') {
+                world.material.opacity = opacity
+                world.material.depthWrite = opacity > 0.5
+            }
+            world.material.needsUpdate = true
+        }
+
+        // Update section materials
+        updateSectionMaterials(mode, opacity)
+    }
+
+    /**
+     * Modify section object materials for see-through effect
+     */
+    const modifySectionMaterials = (mode, opacity) => {
+        if (!world.sectionObjects) return
+
+        for (const [key, section] of Object.entries(world.sectionObjects)) {
+            if (!section) continue
+
+            section.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    // Store original properties
+                    if (!child.userData.originalMaterial) {
+                        child.userData.originalMaterial = {
+                            transparent: child.material.transparent,
+                            opacity: child.material.opacity,
+                            depthWrite: child.material.depthWrite
+                        }
+                    }
+
+                    // Apply see-through effect
+                    child.material.transparent = true
+                    if (mode === 'glass') {
+                        child.material.opacity = 0.4
+                        child.material.depthWrite = false
+                    } else {
+                        child.material.opacity = opacity
+                        child.material.depthWrite = opacity > 0.5
+                    }
+                    child.material.needsUpdate = true
+                }
+            })
+
+            xrayState.modifiedSections.add(key)
+        }
+    }
+
+    /**
+     * Restore section materials to original state
+     */
+    const restoreSectionMaterials = () => {
+        if (!world.sectionObjects) return
+
+        for (const key of xrayState.modifiedSections) {
+            const section = world.sectionObjects[key]
+            if (!section) continue
+
+            section.traverse((child) => {
+                if (child.isMesh && child.material && child.userData.originalMaterial) {
+                    const orig = child.userData.originalMaterial
+                    child.material.transparent = orig.transparent
+                    child.material.opacity = orig.opacity
+                    child.material.depthWrite = orig.depthWrite
+                    child.material.needsUpdate = true
+                    delete child.userData.originalMaterial
+                }
+            })
+        }
+    }
+
+    /**
+     * Update section materials with new settings
+     */
+    const updateSectionMaterials = (mode, opacity) => {
+        if (!world.sectionObjects) return
+
+        for (const key of xrayState.modifiedSections) {
+            const section = world.sectionObjects[key]
+            if (!section) continue
+
+            section.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    if (mode === 'glass') {
+                        child.material.opacity = 0.4
+                        child.material.depthWrite = false
+                    } else {
+                        child.material.opacity = opacity
+                        child.material.depthWrite = opacity > 0.5
+                    }
+                    child.material.needsUpdate = true
+                }
+            })
+        }
+    }
+
+    /**
+     * Handle new chunks being loaded - apply xray effect if active
+     */
+    const onChunkFinished = (chunkKey) => {
+        if (xrayState.active && xrayState.mode === 'seethrough') {
+            const section = world.sectionObjects[chunkKey]
+            if (section && !xrayState.modifiedSections.has(chunkKey)) {
+                section.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        if (!child.userData.originalMaterial) {
+                            child.userData.originalMaterial = {
+                                transparent: child.material.transparent,
+                                opacity: child.material.opacity,
+                                depthWrite: child.material.depthWrite
+                            }
+                        }
+
+                        child.material.transparent = true
+                        if (xrayState.seeThroughMode === 'glass') {
+                            child.material.opacity = 0.4
+                            child.material.depthWrite = false
+                        } else {
+                            const opacity = xrayState.lastSettings?.opacity || 0.3
+                            child.material.opacity = opacity
+                            child.material.depthWrite = opacity > 0.5
+                        }
+                        child.material.needsUpdate = true
+                    }
+                })
+                xrayState.modifiedSections.add(chunkKey)
+            }
+        }
+    }
+
+    // Listen for chunk finished events to apply xray to new chunks
+    if (world.renderUpdateEmitter) {
+        world.renderUpdateEmitter.on('chunkFinished', onChunkFinished)
+    }
+
+    /**
+     * Main Xray update function - handles all modes
+     */
+    const updateXray = () => {
+        const xrayData = window.anticlient.visuals
+        const xrayEnabled = xrayData?.xray
+        const settings = xrayData?.xraySettings
+
+        if (!xrayEnabled) {
+            // Xray disabled - cleanup
+            if (xrayState.active) {
+                if (xrayState.mode === 'seethrough') {
+                    removeSeeThroughEffect()
+                }
+                xrayState.active = false
+            }
+            // Hide highlight meshes
+            for (const meshData of xrayMeshes.values()) {
+                meshData.group.visible = false
+            }
+            return
+        }
+
+        const mode = settings?.mode || 'highlight'
+
+        // Handle mode switching
+        if (xrayState.active && xrayState.mode !== mode) {
+            // Mode changed - cleanup previous mode
+            if (xrayState.mode === 'seethrough') {
+                removeSeeThroughEffect()
+            }
+            xrayState.active = false
+        }
+
+        // Update based on current mode
+        if (mode === 'highlight') {
+            updateXrayHighlight()
+            xrayState.active = true
+            xrayState.mode = 'highlight'
+        } else if (mode === 'seethrough') {
+            updateXraySeeThrough()
+        }
+    }
+
+    // ==========================================
+    // END XRAY SYSTEM
+    // ==========================================
 
     const update = () => {
         if (!window.bot || !window.bot.entities || !window.bot.entity || !window.bot.entity.position) return
@@ -459,6 +836,9 @@ export const worldReady = (world) => {
                 miningOverlay.visible = false
             }
         }
+
+        // --- X-Ray System ---
+        updateXray()
 
         // Cleanup entities
         for (const id of meshes.keys()) {

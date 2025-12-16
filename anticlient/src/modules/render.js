@@ -140,8 +140,8 @@ export const loadRenderModules = () => {
     
     esp.onSettingChanged = (key, newValue) => {
         if (window.anticlient?.visuals) {
-            window.anticlient.visuals.espSettings = esp.settings
-        }
+        window.anticlient.visuals.espSettings = esp.settings
+    }
     }
     
     // Expose cleanup function for external use
@@ -362,14 +362,14 @@ export const loadRenderModules = () => {
                     return
                 }
 
-                // Periodic scan
-                const chests = bot.findBlocks({
-                    matching: (block) => ['chest', 'ender_chest', 'trapped_chest', 'shulker_box', 'barrel', 'furnace'].some(n => block.name.includes(n)),
-                    maxDistance: 64,
-                    count: 100
-                })
-                if (window.anticlient?.visuals) {
-                    window.anticlient.visuals.storageLocations = chests
+            // Periodic scan
+            const chests = bot.findBlocks({
+                matching: (block) => ['chest', 'ender_chest', 'trapped_chest', 'shulker_box', 'barrel', 'furnace'].some(n => block.name.includes(n)),
+                maxDistance: 64,
+                count: 100
+            })
+            if (window.anticlient?.visuals) {
+                window.anticlient.visuals.storageLocations = chests
                 }
             } catch (e) {
                 // Silently fail if bot not ready

@@ -3198,6 +3198,9 @@ var loadWorldModules = () => {
     }
   };
   xray.onTick = (bot) => {
+    if (window.anticlient?.visuals) {
+      window.anticlient.visuals.xraySettings = xray.settings;
+    }
     if (xray.settings.mode === "highlight") {
       if (Date.now() - xray.lastScan > 1e3) {
         const blocks = bot.findBlocks({
@@ -3210,13 +3213,14 @@ var loadWorldModules = () => {
         }
         xray.lastScan = Date.now();
       }
-    } else if (xray.settings.mode === "seethrough" && xray.settings.seeThroughMode === "opacity") {
+    } else if (xray.settings.mode === "seethrough") {
       if (window.anticlient?.visuals) {
         window.anticlient.visuals.xrayOpacity = {
           enabled: true,
           hideBlocks: xray.settings.hideBlocks,
           opacity: xray.settings.opacity,
-          showBlocks: xray.settings.blocks
+          showBlocks: xray.settings.blocks,
+          seeThroughMode: xray.settings.seeThroughMode
         };
       }
     }
