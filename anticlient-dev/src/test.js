@@ -274,6 +274,18 @@ class Minimap {
         this.colorCache = new Map() // Cache block colors
         this.cacheTimeout = 5000 // Clear cache every 5 seconds
         this.lastCacheClear = Date.now()
+        
+        // Chunk-based rendering
+        this.chunkSize = 16 // Minecraft chunk size
+        this.chunkCache = new Map() // Store rendered chunk images
+        this.chunkCaptureCamera = null
+        this.chunkCaptureScene = null
+        this.chunkRenderTarget = null
+        this.lastChunkCapture = 0
+        
+        // World map
+        this.worldMapOpen = false
+        this.worldMapUI = null
     }
     
     init() {
@@ -282,6 +294,12 @@ class Minimap {
         // Zoom controls
         this.ui.zoomInBtn.onclick = () => this.changeZoom(1)
         this.ui.zoomOutBtn.onclick = () => this.changeZoom(-1)
+        
+        // Initialize chunk capture system
+        this.initChunkCapture()
+        
+        // Set up world map keybind
+        this.setupWorldMapKeybind()
         
         // Start update loop
         this.updateInterval = setInterval(() => this.update(), 100) // 10 FPS
@@ -393,6 +411,12 @@ class Minimap {
         // Update coords display
         coordsEl.textContent = `${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)}`
         
+        // Capture nearby chunks periodically (every 5 seconds)
+        if (!this.lastChunkCapture || Date.now() - this.lastChunkCapture > 5000) {
+            this.captureNearbyChunks()
+            this.lastChunkCapture = Date.now()
+        }
+        
         // Clear cache periodically
         if (Date.now() - this.lastCacheClear > this.cacheTimeout) {
             this.clearCache()
@@ -493,17 +517,347 @@ class Minimap {
         ctx.fillText('E', canvas.width - 4, canvas.height / 2 + 4)
     }
     
+    /**
+     * Initialize chunk capture system with Three.js camera
+     */
+    initChunkCapture() {
+        const THREE = window.THREE
+        if (!THREE) {
+            logger.warn('THREE.js not available for chunk capture')
+            return
+        }
+        
+        // Create orthographic camera for top-down view
+        const chunkPixelSize = 64 // pixels per chunk
+        this.chunkCaptureCamera = new THREE.OrthographicCamera(
+            -this.chunkSize / 2, this.chunkSize / 2,
+            this.chunkSize / 2, -this.chunkSize / 2,
+            0.1, 1000
+        )
+        this.chunkCaptureCamera.position.set(0, 150, 0)
+        this.chunkCaptureCamera.lookAt(0, 0, 0)
+        
+        // Create render target for capturing chunks
+        this.chunkRenderTarget = new THREE.WebGLRenderTarget(chunkPixelSize, chunkPixelSize)
+        
+        logger.log('Chunk capture system initialized')
+    }
+    
+    /**
+     * Set up world map keybind (M key)
+     */
+    setupWorldMapKeybind() {
+        this.worldMapKeyHandler = (e) => {
+            if (e.code === 'KeyM' && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
+                this.toggleWorldMap()
+            }
+        }
+        window.addEventListener('keydown', this.worldMapKeyHandler)
+        logger.log('World map keybind (M) registered')
+    }
+    
+    /**
+     * Get chunk coordinates for a world position
+     */
+    getChunkCoords(x, z) {
+        return {
+            chunkX: Math.floor(x / this.chunkSize),
+            chunkZ: Math.floor(z / this.chunkSize)
+        }
+    }
+    
+    /**
+     * Get chunk key for caching
+     */
+    getChunkKey(chunkX, chunkZ) {
+        return `${chunkX},${chunkZ}`
+    }
+    
+    /**
+     * Capture chunk image at given chunk coordinates
+     */
+    captureChunkImage(chunkX, chunkZ) {
+        const bot = window.bot
+        if (!bot || !bot.entity) return null
+        
+        const chunkKey = this.getChunkKey(chunkX, chunkZ)
+        
+        // Return cached if available
+        if (this.chunkCache.has(chunkKey)) {
+            return this.chunkCache.get(chunkKey)
+        }
+        
+        // Create canvas for this chunk
+        const chunkCanvas = document.createElement('canvas')
+        chunkCanvas.width = 64
+        chunkCanvas.height = 64
+        const ctx = chunkCanvas.getContext('2d')
+        
+        // Render chunk terrain
+        const startX = chunkX * this.chunkSize
+        const startZ = chunkZ * this.chunkSize
+        const pixelsPerBlock = chunkCanvas.width / this.chunkSize
+        
+        for (let localZ = 0; localZ < this.chunkSize; localZ++) {
+            for (let localX = 0; localX < this.chunkSize; localX++) {
+                const worldX = startX + localX
+                const worldZ = startZ + localZ
+                
+                const color = this.getColorAt(bot, worldX, worldZ, bot.entity.position.y)
+                
+                if (color) {
+                    ctx.fillStyle = color
+                    ctx.fillRect(
+                        localX * pixelsPerBlock, 
+                        localZ * pixelsPerBlock, 
+                        Math.ceil(pixelsPerBlock), 
+                        Math.ceil(pixelsPerBlock)
+                    )
+                }
+            }
+        }
+        
+        // Cache the chunk image
+        const chunkImage = {
+            canvas: chunkCanvas,
+            chunkX: chunkX,
+            chunkZ: chunkZ,
+            timestamp: Date.now()
+        }
+        
+        this.chunkCache.set(chunkKey, chunkImage)
+        logger.log(`Captured chunk: ${chunkKey}`)
+        
+        return chunkImage
+    }
+    
+    /**
+     * Capture chunks around player
+     */
+    captureNearbyChunks() {
+        const bot = window.bot
+        if (!bot || !bot.entity || !bot.entity.position) return
+        
+        const pos = bot.entity.position
+        const { chunkX, chunkZ } = this.getChunkCoords(pos.x, pos.z)
+        
+        // Capture current chunk and adjacent chunks
+        const captureRadius = 1
+        for (let dz = -captureRadius; dz <= captureRadius; dz++) {
+            for (let dx = -captureRadius; dx <= captureRadius; dx++) {
+                this.captureChunkImage(chunkX + dx, chunkZ + dz)
+            }
+        }
+    }
+    
+    /**
+     * Create world map UI
+     */
+    createWorldMapUI() {
+        const container = document.createElement('div')
+        container.id = 'ac-worldmap-container'
+        container.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 20000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        `
+        
+        const header = document.createElement('div')
+        header.style.cssText = `
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-family: monospace;
+            font-size: 20px;
+            text-align: center;
+        `
+        header.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 5px;">World Map</div>
+            <div style="font-size: 12px; color: #aaa;">Press M to close | Chunks: <span id="ac-worldmap-chunk-count">0</span></div>
+        `
+        container.appendChild(header)
+        
+        const canvas = document.createElement('canvas')
+        canvas.id = 'ac-worldmap-canvas'
+        canvas.style.cssText = `
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            image-rendering: pixelated;
+            max-width: 90vw;
+            max-height: 80vh;
+        `
+        container.appendChild(canvas)
+        
+        document.body.appendChild(container)
+        
+        return {
+            container,
+            canvas,
+            ctx: canvas.getContext('2d'),
+            chunkCountEl: document.getElementById('ac-worldmap-chunk-count')
+        }
+    }
+    
+    /**
+     * Toggle world map
+     */
+    toggleWorldMap() {
+        this.worldMapOpen = !this.worldMapOpen
+        
+        if (this.worldMapOpen) {
+            this.openWorldMap()
+        } else {
+            this.closeWorldMap()
+        }
+    }
+    
+    /**
+     * Open world map
+     */
+    openWorldMap() {
+        logger.log('Opening world map...')
+        
+        // Create UI if it doesn't exist
+        if (!this.worldMapUI) {
+            this.worldMapUI = this.createWorldMapUI()
+        } else {
+            this.worldMapUI.container.style.display = 'flex'
+        }
+        
+        // Render world map
+        this.renderWorldMap()
+    }
+    
+    /**
+     * Close world map
+     */
+    closeWorldMap() {
+        if (this.worldMapUI) {
+            this.worldMapUI.container.style.display = 'none'
+        }
+    }
+    
+    /**
+     * Render world map with all captured chunks
+     */
+    renderWorldMap() {
+        if (!this.worldMapUI) return
+        
+        const { canvas, ctx, chunkCountEl } = this.worldMapUI
+        const bot = window.bot
+        
+        if (this.chunkCache.size === 0) {
+            logger.warn('No chunks captured yet')
+            return
+        }
+        
+        // Update chunk count
+        chunkCountEl.textContent = this.chunkCache.size
+        
+        // Find bounds of all captured chunks
+        let minChunkX = Infinity, maxChunkX = -Infinity
+        let minChunkZ = Infinity, maxChunkZ = -Infinity
+        
+        for (const [key, chunk] of this.chunkCache.entries()) {
+            minChunkX = Math.min(minChunkX, chunk.chunkX)
+            maxChunkX = Math.max(maxChunkX, chunk.chunkX)
+            minChunkZ = Math.min(minChunkZ, chunk.chunkZ)
+            maxChunkZ = Math.max(maxChunkZ, chunk.chunkZ)
+        }
+        
+        // Calculate canvas size
+        const chunkWidth = maxChunkX - minChunkX + 1
+        const chunkHeight = maxChunkZ - minChunkZ + 1
+        const chunkPixelSize = 64
+        
+        canvas.width = chunkWidth * chunkPixelSize
+        canvas.height = chunkHeight * chunkPixelSize
+        
+        // Clear canvas
+        ctx.fillStyle = '#1a1a2e'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        
+        // Draw all chunks
+        for (const [key, chunk] of this.chunkCache.entries()) {
+            const screenX = (chunk.chunkX - minChunkX) * chunkPixelSize
+            const screenZ = (chunk.chunkZ - minChunkZ) * chunkPixelSize
+            
+            ctx.drawImage(chunk.canvas, screenX, screenZ)
+            
+            // Draw chunk borders
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
+            ctx.lineWidth = 1
+            ctx.strokeRect(screenX, screenZ, chunkPixelSize, chunkPixelSize)
+        }
+        
+        // Draw player position if available
+        if (bot && bot.entity && bot.entity.position) {
+            const pos = bot.entity.position
+            const { chunkX, chunkZ } = this.getChunkCoords(pos.x, pos.z)
+            
+            // Local position within chunk
+            const localX = pos.x - (chunkX * this.chunkSize)
+            const localZ = pos.z - (chunkZ * this.chunkSize)
+            
+            // Screen position
+            const screenX = ((chunkX - minChunkX) * chunkPixelSize) + (localX * chunkPixelSize / this.chunkSize)
+            const screenZ = ((chunkZ - minChunkZ) * chunkPixelSize) + (localZ * chunkPixelSize / this.chunkSize)
+            
+            // Draw player marker
+            ctx.fillStyle = '#ffffff'
+            ctx.strokeStyle = '#000000'
+            ctx.lineWidth = 2
+            ctx.beginPath()
+            ctx.arc(screenX, screenZ, 6, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.stroke()
+            
+            // Draw player label
+            ctx.font = 'bold 12px monospace'
+            ctx.fillStyle = '#ffffff'
+            ctx.textAlign = 'center'
+            ctx.fillText('YOU', screenX, screenZ - 10)
+        }
+        
+        logger.log(`Rendered world map: ${chunkWidth}x${chunkHeight} chunks`)
+    }
+    
     destroy() {
         if (this.updateInterval) {
             clearInterval(this.updateInterval)
             this.updateInterval = null
         }
         
+        if (this.worldMapKeyHandler) {
+            window.removeEventListener('keydown', this.worldMapKeyHandler)
+            this.worldMapKeyHandler = null
+        }
+        
         if (this.ui?.container) {
             this.ui.container.remove()
         }
         
+        if (this.worldMapUI?.container) {
+            this.worldMapUI.container.remove()
+            this.worldMapUI = null
+        }
+        
+        if (this.chunkRenderTarget) {
+            this.chunkRenderTarget.dispose()
+            this.chunkRenderTarget = null
+        }
+        
         this.clearCache()
+        this.chunkCache.clear()
         logger.log('Minimap destroyed')
     }
 }
