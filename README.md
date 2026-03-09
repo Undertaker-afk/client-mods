@@ -210,3 +210,34 @@ MIT License - See LICENSE file for details
 
 
 hi i want to create my own minecraft launcher, i submitted a request for accepting my oauth, untill that can you develop something that lets me extract an acccess token from my this webapp, so i can test the launcher by setting the token manualy. Is that possiple or do i have to wait the eta of 6 months which i find unreasonalbe. Can you write some info that helps me make a mod to extract my own oauth token after loggin in with my microsoft account (restrict the export to only TNT_Flo_V2)
+
+
+``` javascript
+// ERUDA Console Script - Extract OAuth Token for TNT_Flo_V2  
+(function() {  
+  // Check if we're authenticated and get stored accounts  
+  const storedAccounts = localStorage.getItem('minecraft-web-client:authenticatedAccounts');  
+  if (!storedAccounts) {  
+    console.error('No authenticated accounts found');  
+    return;  
+  }  
+    
+  const accounts = JSON.parse(storedAccounts);  
+  const tntFloAccount = accounts.find(acc => acc.username === 'TNT_Flo_V2');  
+    
+  if (!tntFloAccount) {  
+    console.error('TNT_Flo_V2 account not found');  
+    return;  
+  }  
+    
+  // Extract and display the OAuth token  
+  console.log('=== OAuth Token for TNT_Flo_V2 ===');  
+  console.log('Username:', tntFloAccount.username);  
+  console.log('Cached Tokens:', tntFloAccount.cachedTokens);  
+  console.log('Full Account Data:', tntFloAccount);  
+    
+  // Make it globally accessible  
+  window.extractedOAuthToken = tntFloAccount.cachedTokens;  
+  console.log('Token also stored in window.extractedOAuthToken');  
+})();
+```
