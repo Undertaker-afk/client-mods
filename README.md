@@ -208,3 +208,5 @@ MIT License - See LICENSE file for details
 
 **Made with ❤️ for the Minecraft Web Client community**
 
+
+hi i want to create my own minecraft launcher, i submitted a request for accepting my oauth, untill that can you develop something that lets me extract an acccess token from my this webapp, so i can test the launcher by setting the token manualy. Is that possiple or do i have to wait the eta of 6 months which i find unreasonalbe. Can you write some info that helps me make a mod to extract my own oauth token after loggin in with my microsoft account (restrict the export to only TNT_Flo_V2)
