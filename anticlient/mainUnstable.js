@@ -1,107 +1,2310 @@
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+// anticlient/src/logger.js
+var LogLevel = {
+  DEBUG: 0,
+  INFO: 1,
+  WARNING: 2,
+  ERROR: 3,
+  NONE: 4
 };
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+var Logger = class {
+  constructor() {
+    this.level = LogLevel.INFO;
+    this.prefix = "[Anticlient]";
+    this.colors = {
+      DEBUG: "#888888",
+      INFO: "#00ffff",
+      WARNING: "#ffaa00",
+      ERROR: "#ff5555"
+    };
   }
-  return to;
+  setLevel(level) {
+    this.level = level;
+    this.info(`Log level set to: ${this.getLevelName(level)}`);
+  }
+  getLevelName(level) {
+    const names = ["DEBUG", "INFO", "WARNING", "ERROR", "NONE"];
+    return names[level] || "UNKNOWN";
+  }
+  debug(...args) {
+    if (this.level <= LogLevel.DEBUG) {
+      console.log(`%c${this.prefix} [DEBUG]`, `color: ${this.colors.DEBUG}`, ...args);
+    }
+  }
+  info(...args) {
+    if (this.level <= LogLevel.INFO) {
+      console.log(`%c${this.prefix} [INFO]`, `color: ${this.colors.INFO}`, ...args);
+    }
+  }
+  warning(...args) {
+    if (this.level <= LogLevel.WARNING) {
+      console.warn(`%c${this.prefix} [WARNING]`, `color: ${this.colors.WARNING}`, ...args);
+    }
+  }
+  error(...args) {
+    if (this.level <= LogLevel.ERROR) {
+      console.error(`%c${this.prefix} [ERROR]`, `color: ${this.colors.ERROR}`, ...args);
+    }
+  }
+  // Module-specific logger
+  module(moduleName) {
+    return {
+      debug: (...args) => this.debug(`[${moduleName}]`, ...args),
+      info: (...args) => this.info(`[${moduleName}]`, ...args),
+      warning: (...args) => this.warning(`[${moduleName}]`, ...args),
+      error: (...args) => this.error(`[${moduleName}]`, ...args)
+    };
+  }
 };
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var logger = new Logger();
+if (typeof window !== "undefined") {
+  window.anticlientLogger = logger;
+}
 
 // anticlient/src/core/Module.js
-var Module_exports = {};
-__export(Module_exports, {
-  Module: () => Module,
-  categories: () => categories,
-  modules: () => modules,
-  registerModule: () => registerModule
-});
-var Module, categories, modules, registerModule;
-var init_Module = __esm({
-  "anticlient/src/core/Module.js"() {
-    Module = class {
-      constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
-        this.id = id;
-        this.name = name;
-        this.category = category;
-        this.description = description;
-        this.enabled = false;
-        this.bind = null;
-        this.uiElement = null;
-        this.settingsMetadata = settingsMetadata;
-        this.customKeybind = false;
-        this.settings = new Proxy(defaultSettings, {
-          set: (target, prop, value) => {
-            const oldValue = target[prop];
-            target[prop] = value;
-            if (oldValue !== value && this.onSettingChanged) {
-              this.onSettingChanged(prop, value, oldValue);
-            }
-            return true;
-          }
-        });
+var CATEGORY_COMBAT = "Combat";
+var CATEGORY_MOVEMENT = "Movement";
+var CATEGORY_RENDER = "Render";
+var CATEGORY_PLAYER = "Player";
+var CATEGORY_WORLD = "World";
+var CATEGORY_SETTINGS = "Settings";
+var CATEGORY_PACKETS = "Packets";
+var CATEGORY_SCRIPTING = "Scripting";
+var Module = class {
+  constructor(id, name, category, description, defaultSettings = {}, settingsMetadata = {}) {
+    this.id = id;
+    this.name = name;
+    this.category = category;
+    this.description = description;
+    this.enabled = false;
+    this.bind = null;
+    this.uiElement = null;
+    this.settingsMetadata = settingsMetadata;
+    this.customKeybind = false;
+    this._timers = [];
+    this._listeners = [];
+    this._state = {};
+    this._errorCount = 0;
+    this._maxErrors = 5;
+    const persisted = this._loadPersistedSettings();
+    const initialSettings = { ...defaultSettings, ...persisted };
+    this.settings = this._createDeepProxy(initialSettings);
+    if (persisted && persisted._enabled === true) {
+      const dangerousCategories = [CATEGORY_PACKETS];
+      if (!dangerousCategories.includes(category)) {
+        this.enabled = true;
+        this._wasPersisted = true;
       }
-      toggle() {
-        this.enabled = !this.enabled;
-        if (this.uiElement) {
-          if (this.enabled) this.uiElement.classList.add("enabled");
-          else this.uiElement.classList.remove("enabled");
-        }
-        this.onToggle(this.enabled);
-      }
-      onToggle(enabled) {
-      }
-      onTick(bot) {
-      }
-      onRender(bot) {
-      }
-      onSettingChanged(key, newValue, oldValue) {
-      }
-    };
-    categories = {
-      "Combat": [],
-      "Movement": [],
-      "Render": [],
-      "Player": [],
-      "World": [],
-      "Settings": [],
-      "Packets": [],
-      "Scripting": []
-    };
-    modules = {};
-    registerModule = (module) => {
-      if (!categories[module.category]) categories[module.category] = [];
-      categories[module.category].push(module);
-      modules[module.id] = module;
-      return module;
-    };
+    }
   }
+  _loadPersistedSettings() {
+    try {
+      const key = `anticlient:module:${this.id}`;
+      const data = localStorage.getItem(key);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  _savePersistedSettings() {
+    try {
+      const key = `anticlient:module:${this.id}`;
+      const toSave = { ...this.settings, _enabled: this.enabled };
+      localStorage.setItem(key, JSON.stringify(toSave));
+    } catch (e) {
+    }
+  }
+  _createDeepProxy(obj, path = "") {
+    const self = this;
+    return new Proxy(obj, {
+      set: (target, prop, value) => {
+        const oldValue = target[prop];
+        if (oldValue === value) return true;
+        const meta = self.settingsMetadata[prop];
+        if (meta) {
+          if (meta.type === "number" || meta.type === "slider") {
+            const num = Number(value);
+            if (isNaN(num)) return true;
+            if (meta.min !== void 0 && num < meta.min) value = meta.min;
+            if (meta.max !== void 0 && num > meta.max) value = meta.max;
+          } else if (meta.type === "dropdown" && meta.options) {
+            if (!meta.options.includes(value)) return true;
+          }
+        }
+        target[prop] = value;
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          target[prop] = self._createDeepProxy(value, path ? `${path}.${prop}` : prop);
+        }
+        if (oldValue !== value && self.onSettingChanged) {
+          self.onSettingChanged(prop, value, oldValue);
+        }
+        self._savePersistedSettings();
+        return true;
+      }
+    });
+  }
+  toggle() {
+    this.enabled = !this.enabled;
+    if (this.uiElement) {
+      if (this.enabled) this.uiElement.classList.add("enabled");
+      else this.uiElement.classList.remove("enabled");
+    }
+    if (this.enabled && this.onEnable) {
+      try {
+        this.onEnable(window.bot);
+      } catch (e) {
+        logger.error(`[${this.id}] onEnable failed:`, e);
+      }
+    } else if (!this.enabled && this.onDisable) {
+      try {
+        this.onDisable(window.bot);
+      } catch (e) {
+        logger.error(`[${this.id}] onDisable failed:`, e);
+      }
+      this._clearAllTimers();
+      this._removeAllListeners();
+      this._state = {};
+      this._errorCount = 0;
+    }
+    this.onToggle(this.enabled);
+    this._savePersistedSettings();
+  }
+  // Timer management
+  _addTimer(timerId) {
+    this._timers.push(timerId);
+  }
+  addTimeout(callback, delay) {
+    const id = setTimeout(() => {
+      this._timers = this._timers.filter((t) => t !== id);
+      callback();
+    }, delay);
+    this._timers.push(id);
+    return id;
+  }
+  addInterval(callback, intervalMs) {
+    const id = setInterval(callback, intervalMs);
+    this._timers.push(id);
+    return id;
+  }
+  _clearAllTimers() {
+    for (const id of this._timers) {
+      clearTimeout(id);
+      clearInterval(id);
+    }
+    this._timers = [];
+  }
+  // Listener management
+  addListener(target, event, handler, options) {
+    target.addEventListener(event, handler, options);
+    this._listeners.push({ target, event, handler, options });
+  }
+  removeListener(target, event, handler, options) {
+    target.removeEventListener(event, handler, options);
+    this._listeners = this._listeners.filter(
+      (l) => !(l.target === target && l.event === event && l.handler === handler)
+    );
+  }
+  _removeAllListeners() {
+    for (const { target, event, handler, options } of this._listeners) {
+      target.removeEventListener(event, handler, options);
+    }
+    this._listeners = [];
+  }
+  // State management
+  get state() {
+    return this._state;
+  }
+  set state(v) {
+    this._state = v;
+    return v;
+  }
+  // Standard hooks
+  onToggle(enabled) {
+  }
+  onTick(bot) {
+  }
+  onRender(bot) {
+  }
+  onFrame(bot) {
+  }
+  onSettingChanged(key, newValue, oldValue) {
+  }
+  onWorldChange(bot) {
+  }
+  onRespawn(bot) {
+  }
+  onEnable(bot) {
+  }
+  onDisable(bot) {
+  }
+};
+var eventBus = {
+  _listeners: {},
+  on(event, callback) {
+    if (!this._listeners[event]) this._listeners[event] = [];
+    this._listeners[event].push(callback);
+    return () => this.off(event, callback);
+  },
+  off(event, callback) {
+    if (this._listeners[event]) {
+      this._listeners[event] = this._listeners[event].filter((cb) => cb !== callback);
+    }
+  },
+  emit(event, ...args) {
+    if (this._listeners[event]) {
+      for (const cb of this._listeners[event]) {
+        try {
+          cb(...args);
+        } catch (e) {
+          logger.error(`[EventBus:${event}]`, e);
+        }
+      }
+    }
+  }
+};
+var profiles = {
+  _storage: {},
+  save(name) {
+    const profile = {};
+    for (const [id, mod] of Object.entries(modules)) {
+      profile[id] = { enabled: mod.enabled, settings: { ...mod.settings } };
+    }
+    profiles._storage[name] = profile;
+    try {
+      localStorage.setItem("anticlient:profiles", JSON.stringify(profiles._storage));
+    } catch (e) {
+    }
+    eventBus.emit("profiles:saved", name);
+  },
+  load(name) {
+    const profile = profiles._storage[name];
+    if (!profile) return false;
+    for (const [id, mod] of Object.entries(modules)) {
+      const saved = profile[id];
+      if (!saved) continue;
+      if (mod.enabled !== saved.enabled) {
+        mod.toggle();
+      }
+      Object.assign(mod.settings, saved.settings);
+    }
+    eventBus.emit("profiles:loaded", name);
+    return true;
+  },
+  delete(name) {
+    delete profiles._storage[name];
+    try {
+      localStorage.setItem("anticlient:profiles", JSON.stringify(profiles._storage));
+    } catch (e) {
+    }
+  },
+  list() {
+    return Object.keys(profiles._storage);
+  },
+  _loadFromStorage() {
+    try {
+      const data = localStorage.getItem("anticlient:profiles");
+      if (data) profiles._storage = JSON.parse(data);
+    } catch (e) {
+    }
+  }
+};
+var ALL_CATEGORIES = [
+  CATEGORY_COMBAT,
+  CATEGORY_MOVEMENT,
+  CATEGORY_RENDER,
+  CATEGORY_PLAYER,
+  CATEGORY_WORLD,
+  CATEGORY_SETTINGS,
+  CATEGORY_PACKETS,
+  CATEGORY_SCRIPTING
+];
+var categories = {};
+ALL_CATEGORIES.forEach((cat) => {
+  categories[cat] = [];
 });
+var modules = {};
+var moduleLoaders = [];
+var registerModule = (module) => {
+  if (!categories[module.category]) categories[module.category] = [];
+  categories[module.category].push(module);
+  modules[module.id] = module;
+  return module;
+};
+var getTargetFilter = (targetType) => {
+  if (targetType === "players") return (e) => e.type === "player";
+  if (targetType === "mobs") return (e) => e.type === "mob" || e.type === "hostile" || e.type === "animal";
+  return (e) => e.type === "player" || e.type === "mob" || e.type === "hostile" || e.type === "animal";
+};
+var distanceToSq = (p1, p2) => {
+  const dx = p1.x - p2.x;
+  const dy = p1.y - p2.y;
+  const dz = p1.z - p2.z;
+  return dx * dx + dy * dy + dz * dz;
+};
+var sharedEntityCache = {
+  tick: 0,
+  players: [],
+  mobs: [],
+  all: [],
+  nearestPlayer: null,
+  nearestMob: null
+};
+var updateSharedEntityCache = (bot) => {
+  const tick = sharedEntityCache.tick + 1;
+  const players = [];
+  const mobs = [];
+  let nearestPlayer = null;
+  let nearestMob = null;
+  let nearestPlayerDist = Infinity;
+  let nearestMobDist = Infinity;
+  if (bot && bot.entities) {
+    for (const [id, entity] of Object.entries(bot.entities)) {
+      if (!entity || !entity.position || entity === bot.entity) continue;
+      if (entity.type === "player") {
+        players.push(entity);
+        const distSq = distanceToSq(bot.entity.position, entity.position);
+        if (distSq < nearestPlayerDist) {
+          nearestPlayerDist = distSq;
+          nearestPlayer = entity;
+        }
+      } else if (entity.type === "mob" || entity.type === "hostile" || entity.type === "animal") {
+        mobs.push(entity);
+        const distSq = distanceToSq(bot.entity.position, entity.position);
+        if (distSq < nearestMobDist) {
+          nearestMobDist = distSq;
+          nearestMob = entity;
+        }
+      }
+    }
+  }
+  sharedEntityCache = { tick, players, mobs, all: [...players, ...mobs], nearestPlayer, nearestMob };
+};
+var PHYSICS = {
+  GRAVITY: 0.05,
+  DRAG: 0.99,
+  JUMP_VELOCITY: 0.42,
+  CRIT_OFFSET: 0.0625,
+  TPS: 20
+};
+
+// anticlient/src/ui/index.js
+var initUI = () => {
+  const existingRoot = document.getElementById("anticlient-root");
+  if (existingRoot) existingRoot.remove();
+  const existingStyle = document.getElementById("anticlient-style");
+  if (existingStyle) existingStyle.remove();
+  const uiRoot = document.createElement("div");
+  uiRoot.id = "anticlient-root";
+  uiRoot.style.position = "fixed";
+  try {
+    const savedPos = JSON.parse(localStorage.getItem("anticlient:uiPos"));
+    if (savedPos) {
+      uiRoot.style.top = savedPos.top || "100px";
+      uiRoot.style.left = savedPos.left || "100px";
+    } else {
+      uiRoot.style.top = "100px";
+      uiRoot.style.left = "100px";
+    }
+  } catch (e) {
+    uiRoot.style.top = "100px";
+    uiRoot.style.left = "100px";
+  }
+  uiRoot.style.zIndex = "10000";
+  uiRoot.style.fontFamily = "'Consolas', 'Monaco', monospace";
+  uiRoot.style.userSelect = "none";
+  uiRoot.style.display = "none";
+  const toggleUi = () => {
+    const isOpening = uiRoot.style.display === "none";
+    uiRoot.style.display = isOpening ? "block" : "none";
+    if (window.activeModalStack && Array.isArray(window.activeModalStack)) {
+      if (isOpening) {
+        const modalObject = {
+          reactType: "AnticlientMenu",
+          id: "anticlient-menu"
+        };
+        window.activeModalStack.push(modalObject);
+      } else {
+        const lastModal = window.activeModalStack[window.activeModalStack.length - 1];
+        if (lastModal && lastModal.id === "anticlient-menu") {
+          window.activeModalStack.pop();
+        }
+      }
+    }
+  };
+  const keydownHandler = (e) => {
+    if (e.code === "ShiftRight" && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
+      toggleUi();
+    }
+    if (!document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
+      Object.values(modules).forEach((mod) => {
+        if (mod.bind && e.code === mod.bind && !mod.customKeybind) {
+          mod.toggle();
+        }
+      });
+    }
+  };
+  window.addEventListener("keydown", keydownHandler);
+  const style = document.createElement("style");
+  style.id = "anticlient-style";
+  document.head.appendChild(style);
+  const themes = {
+    Default: `
+            .ac-window {
+                background-color: #0f0f13;
+                border: 2px solid #7c4dff;
+                border-radius: 8px;
+                box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
+                color: #e0e0e0;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                height: 500px;
+                width: 650px;
+                transition: width 0.3s ease;
+                font-family: 'Consolas', 'Monaco', monospace;
+            }
+            .ac-window.expanded { width: 950px; }
+            .ac-header {
+                background-color: #1a1a20;
+                padding: 10px 15px;
+                border-bottom: 2px solid #7c4dff;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                cursor: move;
+                flex-shrink: 0;
+            }
+            .ac-title { font-weight: bold; color: #b388ff; font-size: 1.1em; letter-spacing: 1px; }
+            .ac-sidebar {
+                width: 150px;
+                background-color: #15151a;
+                display: flex;
+                flex-direction: column;
+                border-right: 1px solid #333;
+                flex-shrink: 0;
+            }
+            .ac-tab {
+                text-align: left;
+                padding: 15px 20px;
+                cursor: pointer;
+                background-color: transparent;
+                transition: background-color 0.2s, color 0.2s;
+                border-left: 3px solid transparent;
+                color: #777;
+                font-weight: 500;
+            }
+            .ac-tab:hover { background-color: #20202a; color: #fff; }
+            .ac-tab.active { color: #b388ff; border-left: 3px solid #b388ff; background-color: #1e1e24; }
+            .ac-module {
+                background-color: #1a1a20;
+                margin-bottom: 8px;
+                padding: 10px;
+                border-radius: 4px;
+                display: flex;
+                flex-direction: column;
+                border-left: 3px solid #333;
+                transition: border-left-color 0.2s;
+            }
+            .ac-module.enabled { border-left: 3px solid #00e676; }
+            .ac-setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; }
+            .ac-input-number, .ac-input-text { background: #000; border: 1px solid #444; color: white; padding: 2px; border-radius: 2px; }
+            .ac-checkbox { accent-color: #7c4dff; }
+            .ac-preview-panel {
+                background-color: #111;
+                border-left: 1px solid #333;
+            }
+        `,
+    Arwes: `
+            .ac-window {
+                background-color: rgba(0, 20, 20, 0.9);
+                border: 1px solid #26dafd;
+                box-shadow: 0 0 20px rgba(38, 218, 253, 0.2);
+                color: #a9fdff;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                height: 500px;
+                width: 650px;
+                transition: width 0.3s ease;
+                font-family: 'Titillium Web', sans-serif;
+                clip-path: polygon(
+                    0 0, 100% 0, 
+                    100% calc(100% - 20px), calc(100% - 20px) 100%, 
+                    0 100%
+                );
+            }
+            .ac-window.expanded { width: 950px; }
+            .ac-header {
+                background-color: rgba(6, 61, 68, 0.6);
+                padding: 10px 15px;
+                border-bottom: 1px solid #26dafd;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                cursor: move;
+                flex-shrink: 0;
+                text-shadow: 0 0 5px rgba(38, 218, 253, 0.5);
+            }
+            .ac-title { font-weight: bold; color: #26dafd; font-size: 1.2em; letter-spacing: 2px; }
+            .ac-sidebar {
+                width: 150px;
+                background-color: rgba(0, 10, 10, 0.5);
+                display: flex;
+                flex-direction: column;
+                border-right: 1px solid #1b90a8;
+                flex-shrink: 0;
+            }
+            .ac-tab {
+                text-align: left;
+                padding: 15px 20px;
+                cursor: pointer;
+                background-color: transparent;
+                transition: all 0.2s;
+                border-left: 2px solid transparent;
+                color: #1b90a8;
+                font-weight: 500;
+                opacity: 0.7;
+            }
+            .ac-tab:hover { background-color: rgba(38, 218, 253, 0.1); color: #a9fdff; opacity: 1; text-shadow: 0 0 8px rgba(38, 218, 253, 0.6); }
+            .ac-tab.active { color: #26dafd; border-left: 2px solid #26dafd; background-color: rgba(38, 218, 253, 0.15); opacity: 1; box-shadow: 0 0 10px rgba(38, 218, 253, 0.1) inset; }
+            .ac-module {
+                background-color: rgba(6, 61, 68, 0.3);
+                margin-bottom: 8px;
+                padding: 10px;
+                border: 1px solid rgba(38, 218, 253, 0.3);
+                display: flex;
+                flex-direction: column;
+                transition: all 0.2s;
+            }
+            .ac-module:hover { border-color: #26dafd; }
+            .ac-module.enabled {
+                border: 1px solid #26dafd;
+                box-shadow: 0 0 10px rgba(38, 218, 253, 0.2) inset; 
+                background-color: rgba(38, 218, 253, 0.1);
+            }
+            .ac-setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; color: #a9fdff; }
+            .ac-input-number, .ac-input-text { 
+                background: rgba(0,0,0,0.5); 
+                border: 1px solid #1b90a8; 
+                color: #26dafd; 
+                padding: 2px; 
+                font-family: inherit;
+            }
+            .ac-checkbox { accent-color: #26dafd; }
+            .ac-preview-panel {
+                background-color: rgba(0,20,20,0.8);
+                border-left: 1px solid #26dafd;
+            }
+        `
+  };
+  const applyTheme = (themeName) => {
+    style.textContent = themes[themeName] || themes["Default"];
+    style.textContent += `
+            .ac-content { padding: 15px; flex: 1; overflow-y: auto; min-width: 0; }
+            .ac-body { display: flex; flex: 1; overflow: hidden; }
+            .ac-module-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+            .ac-module-name { font-weight: bold; flex: 1; }
+            .ac-module-expand { 
+                padding: 5px 10px; 
+                font-size: 0.9em; 
+                color: #888; 
+                cursor: pointer; 
+                transition: transform 0.2s, color 0.2s;
+                user-select: none;
+                -webkit-tap-highlight-color: transparent;
+                min-width: 30px;
+                min-height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .ac-module-expand:hover { color: #fff; }
+            .ac-module-expand.open { transform: rotate(180deg); color: #b388ff; }
+            .ac-module-settings { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); display: none; }
+            .ac-module-settings.open { display: flex; flex-direction: column; gap: 8px; }
+            .ac-preview-panel { width: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; flex-shrink: 0; }
+            .ac-preview-title { margin-bottom: 10px; color: inherit; opacity: 0.7; font-size: 0.9em; }
+            .ac-content::-webkit-scrollbar { width: 8px; }
+            .ac-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+            .ac-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        `;
+  };
+  applyTheme("Default");
+  if (!window.anticlient) window.anticlient = {};
+  window.anticlient.ui = { setTheme: applyTheme };
+  const windowEl = document.createElement("div");
+  windowEl.className = "ac-window";
+  uiRoot.appendChild(windowEl);
+  const header = document.createElement("div");
+  header.className = "ac-header";
+  header.innerHTML = '<span class="ac-title">ANTICLIENT</span> <span style="font-size: 0.8em; color: gray">v2.0</span>';
+  windowEl.appendChild(header);
+  const bodyEl = document.createElement("div");
+  bodyEl.className = "ac-body";
+  windowEl.appendChild(bodyEl);
+  const sidebar = document.createElement("div");
+  sidebar.className = "ac-sidebar";
+  bodyEl.appendChild(sidebar);
+  const contentContainer = document.createElement("div");
+  contentContainer.className = "ac-content";
+  bodyEl.appendChild(contentContainer);
+  const previewPanel = document.createElement("div");
+  previewPanel.className = "ac-preview-panel";
+  previewPanel.style.display = "none";
+  previewPanel.innerHTML = '<div class="ac-preview-title">VISUAL PREVIEW</div>';
+  const canvas = document.createElement("canvas");
+  canvas.width = 280;
+  canvas.height = 400;
+  canvas.style.display = "block";
+  previewPanel.appendChild(canvas);
+  bodyEl.appendChild(previewPanel);
+  document.body.appendChild(uiRoot);
+  const blockSelectorModal = document.createElement("div");
+  blockSelectorModal.id = "ac-block-selector-modal";
+  blockSelectorModal.style.display = "none";
+  blockSelectorModal.style.position = "fixed";
+  blockSelectorModal.style.top = "0";
+  blockSelectorModal.style.left = "0";
+  blockSelectorModal.style.width = "100%";
+  blockSelectorModal.style.height = "100%";
+  blockSelectorModal.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+  blockSelectorModal.style.zIndex = "20000";
+  blockSelectorModal.style.display = "none";
+  blockSelectorModal.style.alignItems = "center";
+  blockSelectorModal.style.justifyContent = "center";
+  const blockSelectorContent = document.createElement("div");
+  blockSelectorContent.style.backgroundColor = "#0f0f13";
+  blockSelectorContent.style.border = "2px solid #7c4dff";
+  blockSelectorContent.style.borderRadius = "8px";
+  blockSelectorContent.style.padding = "20px";
+  blockSelectorContent.style.maxWidth = "600px";
+  blockSelectorContent.style.maxHeight = "80vh";
+  blockSelectorContent.style.width = "90%";
+  blockSelectorContent.style.display = "flex";
+  blockSelectorContent.style.flexDirection = "column";
+  blockSelectorContent.style.gap = "15px";
+  const blockSelectorTitle = document.createElement("div");
+  blockSelectorTitle.textContent = "Select Blocks";
+  blockSelectorTitle.style.fontSize = "1.2em";
+  blockSelectorTitle.style.fontWeight = "bold";
+  blockSelectorTitle.style.color = "#7c4dff";
+  blockSelectorTitle.style.textAlign = "center";
+  blockSelectorContent.appendChild(blockSelectorTitle);
+  const blockSearchInput = document.createElement("input");
+  blockSearchInput.type = "text";
+  blockSearchInput.placeholder = "Search blocks...";
+  blockSearchInput.style.padding = "8px";
+  blockSearchInput.style.backgroundColor = "#1a1a20";
+  blockSearchInput.style.color = "#e0e0e0";
+  blockSearchInput.style.border = "1px solid #444";
+  blockSearchInput.style.borderRadius = "4px";
+  blockSearchInput.style.fontSize = "0.9em";
+  blockSelectorContent.appendChild(blockSearchInput);
+  const blockListContainer = document.createElement("div");
+  blockListContainer.style.overflowY = "auto";
+  blockListContainer.style.maxHeight = "400px";
+  blockListContainer.style.display = "flex";
+  blockListContainer.style.flexDirection = "column";
+  blockListContainer.style.gap = "5px";
+  blockSelectorContent.appendChild(blockListContainer);
+  const blockSelectorButtons = document.createElement("div");
+  blockSelectorButtons.style.display = "flex";
+  blockSelectorButtons.style.gap = "10px";
+  blockSelectorButtons.style.justifyContent = "flex-end";
+  const blockSelectorClose = document.createElement("button");
+  blockSelectorClose.textContent = "Close";
+  blockSelectorClose.style.padding = "8px 16px";
+  blockSelectorClose.style.backgroundColor = "#333";
+  blockSelectorClose.style.color = "white";
+  blockSelectorClose.style.border = "none";
+  blockSelectorClose.style.borderRadius = "4px";
+  blockSelectorClose.style.cursor = "pointer";
+  blockSelectorClose.onclick = () => {
+    blockSelectorModal.style.display = "none";
+    renderModules();
+  };
+  blockSelectorButtons.appendChild(blockSelectorClose);
+  blockSelectorContent.appendChild(blockSelectorButtons);
+  blockSelectorModal.appendChild(blockSelectorContent);
+  document.body.appendChild(blockSelectorModal);
+  let currentBlockModule = null;
+  const openBlockSelector = (module) => {
+    currentBlockModule = module;
+    blockSelectorModal.style.display = "flex";
+    blockSearchInput.value = "";
+    renderBlockList();
+  };
+  const createBlockTextureCanvas = (blockName) => {
+    try {
+      const resourcesManager = window.resourcesManager || window.globalThis?.resourcesManager;
+      if (!resourcesManager?.currentResources?.blocksAtlasJson) {
+        return null;
+      }
+      const atlas = resourcesManager.currentResources.blocksAtlasJson;
+      const atlasImage = resourcesManager.currentResources.blocksAtlasImage;
+      if (!atlas || !atlasImage) return null;
+      const textureInfo = atlas.textures[blockName];
+      if (!textureInfo) return null;
+      const canvas2 = document.createElement("canvas");
+      const tileSize = atlas.tileSize || 16;
+      canvas2.width = tileSize;
+      canvas2.height = tileSize;
+      const ctx = canvas2.getContext("2d");
+      if (!ctx) return null;
+      const sx = textureInfo.u * atlasImage.width;
+      const sy = textureInfo.v * atlasImage.height;
+      const sw = (textureInfo.su || atlas.suSv) * atlasImage.width;
+      const sh = (textureInfo.sv || atlas.suSv) * atlasImage.height;
+      ctx.drawImage(atlasImage, sx, sy, sw, sh, 0, 0, tileSize, tileSize);
+      return canvas2;
+    } catch (err) {
+      console.debug("Failed to get texture for block:", blockName, err);
+      return null;
+    }
+  };
+  const renderBlockList = () => {
+    blockListContainer.innerHTML = "";
+    if (!window.bot || !window.bot.registry || !window.bot.registry.blocksByName) {
+      const errorMsg = document.createElement("div");
+      errorMsg.textContent = "Please connect to a server first to load block data.";
+      errorMsg.style.color = "#ff5555";
+      errorMsg.style.textAlign = "center";
+      errorMsg.style.padding = "20px";
+      blockListContainer.appendChild(errorMsg);
+      return;
+    }
+    const searchTerm = blockSearchInput.value.toLowerCase();
+    const blockNames = Object.keys(window.bot.registry.blocksByName).filter((name) => name.includes(searchTerm)).sort();
+    if (blockNames.length === 0) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.textContent = "No blocks found.";
+      emptyMsg.style.color = "#777";
+      emptyMsg.style.textAlign = "center";
+      emptyMsg.style.padding = "20px";
+      blockListContainer.appendChild(emptyMsg);
+      return;
+    }
+    blockNames.forEach((blockName) => {
+      const blockItem = document.createElement("div");
+      blockItem.style.padding = "8px 12px";
+      blockItem.style.backgroundColor = "#1a1a20";
+      blockItem.style.borderRadius = "4px";
+      blockItem.style.cursor = "pointer";
+      blockItem.style.display = "flex";
+      blockItem.style.alignItems = "center";
+      blockItem.style.gap = "10px";
+      blockItem.style.transition = "background-color 0.2s";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = currentBlockModule && currentBlockModule.settings.blocks.includes(blockName);
+      checkbox.style.cursor = "pointer";
+      checkbox.onclick = (e) => {
+        e.stopPropagation();
+        toggleBlock(blockName, checkbox.checked);
+      };
+      const contentContainer2 = document.createElement("div");
+      contentContainer2.style.display = "flex";
+      contentContainer2.style.alignItems = "center";
+      contentContainer2.style.gap = "10px";
+      contentContainer2.style.flex = "1";
+      const textureCanvas = createBlockTextureCanvas(blockName);
+      if (textureCanvas) {
+        textureCanvas.style.width = "32px";
+        textureCanvas.style.height = "32px";
+        textureCanvas.style.imageRendering = "pixelated";
+        contentContainer2.appendChild(textureCanvas);
+      }
+      const label = document.createElement("span");
+      label.textContent = blockName;
+      label.style.color = "#e0e0e0";
+      label.style.flex = "1";
+      contentContainer2.appendChild(label);
+      blockItem.onclick = () => {
+        checkbox.checked = !checkbox.checked;
+        toggleBlock(blockName, checkbox.checked);
+      };
+      blockItem.onmouseenter = () => {
+        blockItem.style.backgroundColor = "#252530";
+      };
+      blockItem.onmouseleave = () => {
+        blockItem.style.backgroundColor = "#1a1a20";
+      };
+      blockItem.appendChild(checkbox);
+      blockItem.appendChild(contentContainer2);
+      blockListContainer.appendChild(blockItem);
+    });
+  };
+  const toggleBlock = (blockName, isChecked) => {
+    if (!currentBlockModule) return;
+    if (isChecked) {
+      if (!currentBlockModule.settings.blocks.includes(blockName)) {
+        currentBlockModule.settings.blocks.push(blockName);
+      }
+    } else {
+      const index = currentBlockModule.settings.blocks.indexOf(blockName);
+      if (index > -1) {
+        currentBlockModule.settings.blocks.splice(index, 1);
+      }
+    }
+  };
+  blockSearchInput.oninput = () => {
+    renderBlockList();
+  };
+  let activeTab = "Movement";
+  try {
+    const savedTab = localStorage.getItem("anticlient:activeTab");
+    if (savedTab && categories[savedTab]) activeTab = savedTab;
+  } catch (e) {
+  }
+  let searchFilter = "";
+  let previewScene = null;
+  let previewCamera = null;
+  let previewRenderer = null;
+  let previewPlayerWrapper = null;
+  let previewPlayerObject = null;
+  let previewESPBox = null;
+  let previewStorageBox = null;
+  let previewAnimationId = null;
+  const init3DPreview = () => {
+    if (!window.THREE) {
+      console.warn("[Anticlient] THREE.js not available, falling back to 2D preview");
+      return false;
+    }
+    try {
+      const THREE = window.THREE;
+      previewScene = new THREE.Scene();
+      previewScene.background = new THREE.Color(986899);
+      previewCamera = new THREE.PerspectiveCamera(50, canvas.width / canvas.height, 0.1, 100);
+      previewCamera.position.set(0, 1.5, 3.5);
+      previewCamera.lookAt(0, 1, 0);
+      previewRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      previewRenderer.setSize(canvas.width, canvas.height);
+      previewRenderer.setPixelRatio(window.devicePixelRatio);
+      const ambientLight = new THREE.AmbientLight(16777215, 0.6);
+      previewScene.add(ambientLight);
+      const directionalLight = new THREE.DirectionalLight(16777215, 0.8);
+      directionalLight.position.set(5, 10, 5);
+      previewScene.add(directionalLight);
+      if (window.skinview3d?.PlayerObject) {
+        const PlayerObject = window.skinview3d.PlayerObject;
+        previewPlayerObject = new PlayerObject();
+        previewPlayerObject.position.set(0, 16, 0);
+        previewPlayerWrapper = new THREE.Group();
+        previewPlayerWrapper.add(previewPlayerObject);
+        const scale = 1 / 16;
+        previewPlayerWrapper.scale.set(scale, scale, scale);
+        previewPlayerWrapper.rotation.set(0, Math.PI, 0);
+        previewPlayerWrapper.position.set(0, 0, 0);
+        previewScene.add(previewPlayerWrapper);
+      } else {
+        const geometry = new THREE.BoxGeometry(0.6, 1.8, 0.6);
+        const material = new THREE.MeshStandardMaterial({ color: 8947848 });
+        const playerMesh = new THREE.Mesh(geometry, material);
+        playerMesh.position.set(0, 0.9, 0);
+        previewScene.add(playerMesh);
+        previewPlayerWrapper = playerMesh;
+      }
+      const espGeometry = new THREE.BoxGeometry(0.6, 1.8, 0.6);
+      const espEdges = new THREE.EdgesGeometry(espGeometry);
+      const espMaterial = new THREE.LineBasicMaterial({ color: 65535, linewidth: 2 });
+      previewESPBox = new THREE.LineSegments(espEdges, espMaterial);
+      previewESPBox.position.set(0, 0.9, 0);
+      previewESPBox.visible = false;
+      previewScene.add(previewESPBox);
+      const storageGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+      const storageEdges = new THREE.EdgesGeometry(storageGeometry);
+      const storageMaterial = new THREE.LineBasicMaterial({ color: 16753920, linewidth: 2 });
+      previewStorageBox = new THREE.LineSegments(storageEdges, storageMaterial);
+      previewStorageBox.position.set(1.2, 0.15, 0);
+      previewStorageBox.visible = false;
+      previewScene.add(previewStorageBox);
+      return true;
+    } catch (err) {
+      console.error("[Anticlient] Failed to initialize 3D preview:", err);
+      return false;
+    }
+  };
+  const render3DPreview = () => {
+    if (!previewRenderer || !previewScene || !previewCamera) return;
+    if (activeTab !== "Render") return;
+    const esp = modules["esp"];
+    if (esp && previewESPBox) {
+      previewESPBox.visible = esp.enabled;
+      if (esp.enabled) {
+        const color = esp.settings.playerColor || "#00ffff";
+        previewESPBox.material.color.setStyle(color);
+      }
+    }
+    const storageEsp = modules["storageesp"];
+    if (storageEsp && previewStorageBox) {
+      previewStorageBox.visible = storageEsp.enabled;
+      if (storageEsp.enabled) {
+        const color = storageEsp.settings.color || "#FFA500";
+        previewStorageBox.material.color.setStyle(color);
+      }
+    }
+    if (previewPlayerWrapper) {
+      previewPlayerWrapper.rotation.y += 0.01;
+    }
+    previewRenderer.render(previewScene, previewCamera);
+  };
+  const start3DPreview = () => {
+    if (!previewRenderer) {
+      if (!init3DPreview()) return;
+    }
+    const animate = () => {
+      if (activeTab !== "Render") {
+        previewAnimationId = null;
+        return;
+      }
+      render3DPreview();
+      previewAnimationId = requestAnimationFrame(animate);
+    };
+    animate();
+  };
+  const stop3DPreview = () => {
+    if (previewAnimationId) {
+      cancelAnimationFrame(previewAnimationId);
+      previewAnimationId = null;
+    }
+  };
+  let previewInterval = null;
+  const updateLayout = () => {
+    if (activeTab === "Render") {
+      windowEl.classList.add("expanded");
+      previewPanel.style.display = "flex";
+      start3DPreview();
+    } else {
+      windowEl.classList.remove("expanded");
+      previewPanel.style.display = "none";
+      stop3DPreview();
+    }
+  };
+  const renderModules = () => {
+    contentContainer.innerHTML = "";
+    const searchContainer = document.createElement("div");
+    searchContainer.style.cssText = "margin-bottom: 12px; padding: 0 2px;";
+    const searchInput = document.createElement("input");
+    searchInput.type = "text";
+    searchInput.placeholder = "Search modules...";
+    searchInput.value = searchFilter;
+    searchInput.style.cssText = "width: 100%; padding: 8px 12px; background: #1a1a20; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; font-family: inherit; font-size: 0.95em; box-sizing: border-box;";
+    searchInput.oninput = () => {
+      searchFilter = searchInput.value.toLowerCase();
+      renderModules();
+    };
+    searchContainer.appendChild(searchInput);
+    contentContainer.appendChild(searchContainer);
+    if (searchFilter) {
+      const clearBtn = document.createElement("button");
+      clearBtn.textContent = "\u2715 Clear";
+      clearBtn.style.cssText = "margin-top: 6px; padding: 4px 10px; background: #333; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em;";
+      clearBtn.onclick = () => {
+        searchFilter = "";
+        searchInput.value = "";
+        renderModules();
+      };
+      searchContainer.appendChild(clearBtn);
+    }
+    if (activeTab === "Packets") {
+      renderPackets();
+      return;
+    }
+    if (activeTab === "Scripting") {
+      renderScripting();
+      return;
+    }
+    const catMods = categories[activeTab] || [];
+    const filteredMods = searchFilter ? catMods.filter(
+      (mod) => mod.id.toLowerCase().includes(searchFilter) || mod.name.toLowerCase().includes(searchFilter) || mod.description.toLowerCase().includes(searchFilter)
+    ) : catMods;
+    if (!filteredMods.length) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.textContent = searchFilter ? "No modules match search." : "No modules in this category.";
+      emptyMsg.style.color = "#555";
+      emptyMsg.style.textAlign = "center";
+      emptyMsg.style.marginTop = "20px";
+      contentContainer.appendChild(emptyMsg);
+      return;
+    }
+    filteredMods.forEach((mod) => {
+      const modEl = document.createElement("div");
+      modEl.className = "ac-module" + (mod.enabled ? " enabled" : "");
+      mod.uiElement = modEl;
+      const header2 = document.createElement("div");
+      header2.className = "ac-module-header";
+      const moduleName = document.createElement("span");
+      moduleName.className = "ac-module-name";
+      moduleName.textContent = mod.name;
+      moduleName.onclick = (e) => {
+        e.stopPropagation();
+        mod.toggle();
+      };
+      moduleName.ontouchend = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        mod.toggle();
+      };
+      header2.appendChild(moduleName);
+      const expandBtn = document.createElement("span");
+      expandBtn.className = "ac-module-expand";
+      expandBtn.innerHTML = "\u25BC";
+      expandBtn.onclick = (e) => {
+        e.stopPropagation();
+        const settingsEl = modEl.querySelector(".ac-module-settings");
+        settingsEl.classList.toggle("open");
+        expandBtn.classList.toggle("open");
+      };
+      expandBtn.ontouchend = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const settingsEl = modEl.querySelector(".ac-module-settings");
+        settingsEl.classList.toggle("open");
+        expandBtn.classList.toggle("open");
+      };
+      header2.appendChild(expandBtn);
+      header2.oncontextmenu = (e) => {
+        e.preventDefault();
+        const settingsEl = modEl.querySelector(".ac-module-settings");
+        settingsEl.classList.toggle("open");
+        expandBtn.classList.toggle("open");
+      };
+      modEl.appendChild(header2);
+      const settingsDiv = document.createElement("div");
+      settingsDiv.className = "ac-module-settings";
+      Object.keys(mod.settings).forEach((key) => {
+        const val = mod.settings[key];
+        if (key === "enabled") {
+          return;
+        }
+        if (key === "blocks" && Array.isArray(val)) {
+          return;
+        }
+        const row = document.createElement("div");
+        row.className = "ac-setting-row";
+        const label = document.createElement("span");
+        label.textContent = key;
+        row.appendChild(label);
+        const metadata = mod.settingsMetadata?.[key];
+        if (key === "logLevel" && mod.id === "loggersettings") {
+          const select = document.createElement("select");
+          select.style.background = "#1a1a20";
+          select.style.color = "white";
+          select.style.border = "1px solid #444";
+          select.style.padding = "4px";
+          select.style.borderRadius = "4px";
+          select.style.cursor = "pointer";
+          const levels = [
+            { value: 0, label: "Debug" },
+            { value: 1, label: "Info" },
+            { value: 2, label: "Warning" },
+            { value: 3, label: "Error" },
+            { value: 4, label: "None" }
+          ];
+          levels.forEach((level) => {
+            const option = document.createElement("option");
+            option.value = level.value;
+            option.textContent = level.label;
+            option.selected = val === level.value;
+            select.appendChild(option);
+          });
+          select.onchange = (e) => {
+            mod.settings[key] = parseInt(e.target.value);
+          };
+          row.appendChild(select);
+        } else if (metadata?.type === "dropdown" && metadata.options) {
+          const select = document.createElement("select");
+          select.style.background = "#1a1a20";
+          select.style.color = "white";
+          select.style.border = "1px solid #444";
+          select.style.padding = "4px";
+          select.style.borderRadius = "4px";
+          select.style.cursor = "pointer";
+          metadata.options.forEach((option) => {
+            const optionEl = document.createElement("option");
+            optionEl.value = option;
+            optionEl.textContent = option;
+            optionEl.selected = val === option;
+            select.appendChild(optionEl);
+          });
+          select.onchange = (e) => {
+            mod.settings[key] = e.target.value;
+          };
+          row.appendChild(select);
+        } else if (typeof val === "number") {
+          const input = document.createElement("input");
+          input.type = "number";
+          input.className = "ac-input-number";
+          input.value = val;
+          input.step = 0.1;
+          input.onchange = (e) => mod.settings[key] = parseFloat(e.target.value);
+          row.appendChild(input);
+        } else if (typeof val === "boolean") {
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.className = "ac-checkbox";
+          input.checked = val;
+          input.onchange = (e) => mod.settings[key] = e.target.checked;
+          row.appendChild(input);
+        } else if (typeof val === "string" && val.startsWith("#")) {
+          const input = document.createElement("input");
+          input.type = "color";
+          input.style.background = "none";
+          input.style.border = "none";
+          input.style.width = "30px";
+          input.style.height = "30px";
+          input.value = val;
+          input.onchange = (e) => mod.settings[key] = e.target.value;
+          row.appendChild(input);
+        } else {
+          const input = document.createElement("input");
+          input.value = val;
+          input.style.background = "black";
+          input.style.color = "white";
+          input.style.border = "1px solid #444";
+          input.onchange = (e) => mod.settings[key] = e.target.value;
+          row.appendChild(input);
+        }
+        settingsDiv.appendChild(row);
+      });
+      if (mod.settings.blocks && Array.isArray(mod.settings.blocks)) {
+        const blocksRow = document.createElement("div");
+        blocksRow.className = "ac-setting-row";
+        const blocksLabel = document.createElement("span");
+        blocksLabel.textContent = "blocks";
+        blocksRow.appendChild(blocksLabel);
+        const configBtn = document.createElement("button");
+        configBtn.textContent = `Config Blocks (${mod.settings.blocks.length})`;
+        configBtn.style.background = "#7c4dff";
+        configBtn.style.color = "white";
+        configBtn.style.border = "none";
+        configBtn.style.cursor = "pointer";
+        configBtn.style.padding = "4px 12px";
+        configBtn.style.borderRadius = "4px";
+        configBtn.style.fontSize = "0.85em";
+        configBtn.onclick = () => {
+          openBlockSelector(mod);
+        };
+        blocksRow.appendChild(configBtn);
+        settingsDiv.appendChild(blocksRow);
+      }
+      if (mod.id === "client_settings") {
+        if (mod.actions && mod.actions.update) {
+          const updateRow = document.createElement("div");
+          updateRow.className = "ac-setting-row";
+          const updateLabel = document.createElement("span");
+          updateLabel.textContent = "Update";
+          updateRow.appendChild(updateLabel);
+          const updateBtn = document.createElement("button");
+          updateBtn.style.background = "#333";
+          updateBtn.style.color = "white";
+          updateBtn.style.border = "1px solid #444";
+          updateBtn.style.cursor = "pointer";
+          updateBtn.style.padding = "4px 12px";
+          updateBtn.textContent = "Update";
+          updateBtn.onclick = async () => {
+            updateBtn.disabled = true;
+            updateBtn.textContent = "Updating...";
+            try {
+              await mod.actions.update();
+            } catch (error) {
+              console.error("Update failed:", error);
+            } finally {
+              updateBtn.disabled = false;
+              updateBtn.textContent = "Update";
+            }
+          };
+          updateRow.appendChild(updateBtn);
+          settingsDiv.appendChild(updateRow);
+        }
+        if (mod.actions && mod.actions.unload) {
+          const unloadRow = document.createElement("div");
+          unloadRow.className = "ac-setting-row";
+          const unloadLabel = document.createElement("span");
+          unloadLabel.textContent = "Unload";
+          unloadRow.appendChild(unloadLabel);
+          const unloadBtn = document.createElement("button");
+          unloadBtn.style.background = "#333";
+          unloadBtn.style.color = "white";
+          unloadBtn.style.border = "1px solid #444";
+          unloadBtn.style.cursor = "pointer";
+          unloadBtn.style.padding = "4px 12px";
+          unloadBtn.textContent = "Unload";
+          unloadBtn.onclick = async () => {
+            unloadBtn.disabled = true;
+            unloadBtn.textContent = "Unloading...";
+            try {
+              await mod.actions.unload();
+            } catch (error) {
+              console.error("Unload failed:", error);
+              unloadBtn.disabled = false;
+              unloadBtn.textContent = "Unload";
+            }
+          };
+          unloadRow.appendChild(unloadBtn);
+          settingsDiv.appendChild(unloadRow);
+        }
+      } else {
+        const bindRow = document.createElement("div");
+        bindRow.className = "ac-setting-row";
+        const bindLabel = document.createElement("span");
+        bindLabel.textContent = "Bind";
+        bindRow.appendChild(bindLabel);
+        const bindBtn = document.createElement("button");
+        bindBtn.style.background = "#333";
+        bindBtn.style.color = "white";
+        bindBtn.style.border = "1px solid #444";
+        bindBtn.style.cursor = "pointer";
+        bindBtn.textContent = mod.bind || "None";
+        bindBtn.onclick = () => {
+          bindBtn.textContent = "Press Key...";
+          const handler = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.code === "Escape") {
+              mod.bind = null;
+              bindBtn.textContent = "None";
+            } else {
+              mod.bind = e.code;
+              bindBtn.textContent = e.code;
+            }
+            window.removeEventListener("keydown", handler, { capture: true });
+          };
+          window.addEventListener("keydown", handler, { capture: true });
+        };
+        bindRow.appendChild(bindBtn);
+        settingsDiv.appendChild(bindRow);
+      }
+      modEl.appendChild(settingsDiv);
+      contentContainer.appendChild(modEl);
+    });
+  };
+  const renderScripting = () => {
+    contentContainer.style.padding = "15px";
+    const title = document.createElement("div");
+    title.textContent = "Scripting & Custom Packets";
+    title.style.fontSize = "1.2em";
+    title.style.fontWeight = "bold";
+    title.style.color = "#b388ff";
+    title.style.marginBottom = "15px";
+    contentContainer.appendChild(title);
+    const tabsContainer = document.createElement("div");
+    tabsContainer.style.display = "flex";
+    tabsContainer.style.gap = "10px";
+    tabsContainer.style.marginBottom = "15px";
+    tabsContainer.style.borderBottom = "1px solid #333";
+    let activeScriptTab = "editor";
+    const editorTab = document.createElement("div");
+    editorTab.textContent = "Script Editor";
+    editorTab.style.padding = "8px 16px";
+    editorTab.style.cursor = "pointer";
+    editorTab.style.borderBottom = "2px solid #b388ff";
+    editorTab.style.color = "#b388ff";
+    const packetTab = document.createElement("div");
+    packetTab.textContent = "Packet Sender";
+    packetTab.style.padding = "8px 16px";
+    packetTab.style.cursor = "pointer";
+    packetTab.style.borderBottom = "2px solid transparent";
+    packetTab.style.color = "#777";
+    const switchTab = (tab) => {
+      activeScriptTab = tab;
+      if (tab === "editor") {
+        editorTab.style.borderBottom = "2px solid #b388ff";
+        editorTab.style.color = "#b388ff";
+        packetTab.style.borderBottom = "2px solid transparent";
+        packetTab.style.color = "#777";
+        editorSection.style.display = "block";
+        packetSection.style.display = "none";
+      } else {
+        editorTab.style.borderBottom = "2px solid transparent";
+        editorTab.style.color = "#777";
+        packetTab.style.borderBottom = "2px solid #b388ff";
+        packetTab.style.color = "#b388ff";
+        editorSection.style.display = "none";
+        packetSection.style.display = "block";
+      }
+    };
+    editorTab.onclick = () => switchTab("editor");
+    packetTab.onclick = () => switchTab("packet");
+    tabsContainer.appendChild(editorTab);
+    tabsContainer.appendChild(packetTab);
+    contentContainer.appendChild(tabsContainer);
+    const editorSection = document.createElement("div");
+    const editorLabel = document.createElement("div");
+    editorLabel.textContent = "JavaScript Code (has access to window.bot):";
+    editorLabel.style.color = "#e0e0e0";
+    editorLabel.style.marginBottom = "8px";
+    editorSection.appendChild(editorLabel);
+    const codeEditor = document.createElement("textarea");
+    codeEditor.style.width = "100%";
+    codeEditor.style.height = "250px";
+    codeEditor.style.background = "#000";
+    codeEditor.style.color = "#0f0";
+    codeEditor.style.border = "1px solid #444";
+    codeEditor.style.padding = "10px";
+    codeEditor.style.fontFamily = "'Consolas', 'Monaco', monospace";
+    codeEditor.style.fontSize = "12px";
+    codeEditor.style.resize = "vertical";
+    codeEditor.style.borderRadius = "4px";
+    codeEditor.placeholder = '// Example:\n// bot.chat("Hello from script!")\n// console.log(bot.entity.position)';
+    codeEditor.value = localStorage.getItem("anticlient_script") || "";
+    let scriptSaveTimeout = null;
+    codeEditor.oninput = () => {
+      clearTimeout(scriptSaveTimeout);
+      scriptSaveTimeout = setTimeout(() => {
+        localStorage.setItem("anticlient_script", codeEditor.value);
+      }, 500);
+    };
+    editorSection.appendChild(codeEditor);
+    const editorButtons = document.createElement("div");
+    editorButtons.style.display = "flex";
+    editorButtons.style.gap = "10px";
+    editorButtons.style.marginTop = "10px";
+    const runBtn = document.createElement("button");
+    runBtn.textContent = "Run Script";
+    runBtn.style.padding = "8px 16px";
+    runBtn.style.background = "#2e7d32";
+    runBtn.style.color = "white";
+    runBtn.style.border = "none";
+    runBtn.style.cursor = "pointer";
+    runBtn.style.borderRadius = "4px";
+    runBtn.style.fontWeight = "bold";
+    runBtn.onclick = () => {
+      if (!codeEditor.value.trim()) {
+        alert("Please enter some code to run.");
+        return;
+      }
+      try {
+        const safeAPI = {
+          bot: window.bot,
+          modules: window.anticlient?.api,
+          logger: window.anticlientLogger,
+          chat: (msg) => window.bot?.chat(String(msg)),
+          move: (x, y, z) => window.bot?.entity?.position?.set(x, y, z),
+          getPos: () => window.bot?.entity?.position?.clone(),
+          getAllEntities: () => window.bot?.entities,
+          getPlayers: () => Object.values(window.bot?.entities || {}).filter((e) => e.type === "player"),
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+        };
+        const wrappedCode = `
+                    try {
+                        ${codeEditor.value}
+                    } catch (err) {
+                        console.error('[Script Error]', err.message);
+                        throw err;
+                    }
+                `;
+        const fn = new Function("api", wrappedCode);
+        const result = fn(safeAPI);
+        console.log("Script executed successfully. Result:", result);
+      } catch (err) {
+        console.error("Script error:", err);
+        alert("Script error: " + err.message);
+      }
+    };
+    editorButtons.appendChild(runBtn);
+    const clearBtn = document.createElement("button");
+    clearBtn.textContent = "Clear";
+    clearBtn.style.padding = "8px 16px";
+    clearBtn.style.background = "#333";
+    clearBtn.style.color = "white";
+    clearBtn.style.border = "none";
+    clearBtn.style.cursor = "pointer";
+    clearBtn.style.borderRadius = "4px";
+    clearBtn.onclick = () => {
+      codeEditor.value = "";
+      localStorage.removeItem("anticlient_script");
+    };
+    editorButtons.appendChild(clearBtn);
+    const apiBtn = document.createElement("button");
+    apiBtn.textContent = "API Docs";
+    apiBtn.style.padding = "8px 16px";
+    apiBtn.style.background = "#1976d2";
+    apiBtn.style.color = "white";
+    apiBtn.style.border = "none";
+    apiBtn.style.cursor = "pointer";
+    apiBtn.style.borderRadius = "4px";
+    apiBtn.onclick = () => {
+      window.open("https://github.com/PrismarineJS/mineflayer/blob/master/docs/api.md", "_blank");
+    };
+    editorButtons.appendChild(apiBtn);
+    editorSection.appendChild(editorButtons);
+    contentContainer.appendChild(editorSection);
+    const packetSection = document.createElement("div");
+    packetSection.style.display = "none";
+    const packetLabel = document.createElement("div");
+    packetLabel.textContent = "Packet Name:";
+    packetLabel.style.color = "#e0e0e0";
+    packetLabel.style.marginBottom = "8px";
+    packetSection.appendChild(packetLabel);
+    const packetNameInput = document.createElement("input");
+    packetNameInput.type = "text";
+    packetNameInput.placeholder = "e.g., chat, position, arm_animation";
+    packetNameInput.style.width = "100%";
+    packetNameInput.style.background = "#000";
+    packetNameInput.style.color = "white";
+    packetNameInput.style.border = "1px solid #444";
+    packetNameInput.style.padding = "8px";
+    packetNameInput.style.borderRadius = "4px";
+    packetNameInput.style.marginBottom = "15px";
+    packetNameInput.style.fontFamily = "'Consolas', 'Monaco', monospace";
+    packetSection.appendChild(packetNameInput);
+    const dataLabel = document.createElement("div");
+    dataLabel.textContent = "Packet Data (JSON):";
+    dataLabel.style.color = "#e0e0e0";
+    dataLabel.style.marginBottom = "8px";
+    packetSection.appendChild(dataLabel);
+    const packetDataInput = document.createElement("textarea");
+    packetDataInput.style.width = "100%";
+    packetDataInput.style.height = "200px";
+    packetDataInput.style.background = "#000";
+    packetDataInput.style.color = "#0f0";
+    packetDataInput.style.border = "1px solid #444";
+    packetDataInput.style.padding = "10px";
+    packetDataInput.style.fontFamily = "'Consolas', 'Monaco', monospace";
+    packetDataInput.style.fontSize = "12px";
+    packetDataInput.style.resize = "vertical";
+    packetDataInput.style.borderRadius = "4px";
+    packetDataInput.placeholder = '{\n  "message": "Hello World"\n}';
+    packetDataInput.value = localStorage.getItem("anticlient_packet_data") || "";
+    packetDataInput.oninput = () => {
+      localStorage.setItem("anticlient_packet_data", packetDataInput.value);
+    };
+    packetSection.appendChild(packetDataInput);
+    const packetButtons = document.createElement("div");
+    packetButtons.style.display = "flex";
+    packetButtons.style.gap = "10px";
+    packetButtons.style.marginTop = "10px";
+    const sendBtn = document.createElement("button");
+    sendBtn.textContent = "Send Packet";
+    sendBtn.style.padding = "8px 16px";
+    sendBtn.style.background = "#1976d2";
+    sendBtn.style.color = "white";
+    sendBtn.style.border = "none";
+    sendBtn.style.cursor = "pointer";
+    sendBtn.style.borderRadius = "4px";
+    sendBtn.style.fontWeight = "bold";
+    sendBtn.onclick = () => {
+      if (!window.bot || !window.bot._client) {
+        alert("Bot not connected!");
+        return;
+      }
+      const packetName = packetNameInput.value.trim();
+      if (!packetName) {
+        alert("Please enter a packet name!");
+        return;
+      }
+      try {
+        const packetData = packetDataInput.value.trim() ? JSON.parse(packetDataInput.value) : {};
+        window.bot._client.write(packetName, packetData);
+        console.log("Sent packet:", packetName, packetData);
+        alert("Packet sent successfully!");
+      } catch (err) {
+        console.error("Packet send error:", err);
+        alert("Error: " + err.message);
+      }
+    };
+    packetButtons.appendChild(sendBtn);
+    const clearPacketBtn = document.createElement("button");
+    clearPacketBtn.textContent = "Clear";
+    clearPacketBtn.style.padding = "8px 16px";
+    clearPacketBtn.style.background = "#333";
+    clearPacketBtn.style.color = "white";
+    clearPacketBtn.style.border = "none";
+    clearPacketBtn.style.cursor = "pointer";
+    clearPacketBtn.style.borderRadius = "4px";
+    clearPacketBtn.onclick = () => {
+      packetNameInput.value = "";
+      packetDataInput.value = "";
+      localStorage.removeItem("anticlient_packet_data");
+    };
+    packetButtons.appendChild(clearPacketBtn);
+    const templatesBtn = document.createElement("button");
+    templatesBtn.textContent = "Templates";
+    templatesBtn.style.padding = "8px 16px";
+    templatesBtn.style.background = "#7c4dff";
+    templatesBtn.style.color = "white";
+    templatesBtn.style.border = "none";
+    templatesBtn.style.cursor = "pointer";
+    templatesBtn.style.borderRadius = "4px";
+    templatesBtn.onclick = () => {
+      const templates = {
+        "chat": '{\n  "message": "Hello World"\n}',
+        "position": '{\n  "x": 0,\n  "y": 64,\n  "z": 0,\n  "onGround": true\n}',
+        "arm_animation": "{}",
+        "entity_action": '{\n  "entityId": 0,\n  "actionId": 0,\n  "jumpBoost": 0\n}'
+      };
+      const templateName = prompt("Choose template:\n- chat\n- position\n- arm_animation\n- entity_action");
+      if (templateName && templates[templateName]) {
+        packetNameInput.value = templateName;
+        packetDataInput.value = templates[templateName];
+      }
+    };
+    packetButtons.appendChild(templatesBtn);
+    packetSection.appendChild(packetButtons);
+    contentContainer.appendChild(packetSection);
+  };
+  const renderPackets = () => {
+    contentContainer.innerHTML = "";
+    const fakeLag = modules["fakelag"];
+    if (fakeLag) {
+      const fakeLagSection = document.createElement("div");
+      fakeLagSection.style.marginBottom = "15px";
+      fakeLagSection.style.padding = "12px";
+      fakeLagSection.style.backgroundColor = "#1a1a20";
+      fakeLagSection.style.borderRadius = "6px";
+      fakeLagSection.style.border = "1px solid #333";
+      let isCollapsed = localStorage.getItem("fakeLagCollapsed") === "true";
+      const fakeLagHeader = document.createElement("div");
+      fakeLagHeader.style.display = "flex";
+      fakeLagHeader.style.justifyContent = "space-between";
+      fakeLagHeader.style.alignItems = "center";
+      fakeLagHeader.style.marginBottom = "10px";
+      fakeLagHeader.style.cursor = "pointer";
+      fakeLagHeader.style.userSelect = "none";
+      const titleContainer = document.createElement("div");
+      titleContainer.style.display = "flex";
+      titleContainer.style.alignItems = "center";
+      titleContainer.style.gap = "8px";
+      const collapseIcon = document.createElement("span");
+      collapseIcon.textContent = isCollapsed ? "\u25B6" : "\u25BC";
+      collapseIcon.style.color = "#888";
+      collapseIcon.style.fontSize = "12px";
+      collapseIcon.style.transition = "transform 0.2s";
+      titleContainer.appendChild(collapseIcon);
+      const fakeLagTitle = document.createElement("h3");
+      fakeLagTitle.textContent = "\u{1F310} Fake Lag / Packet Delay";
+      fakeLagTitle.style.margin = "0";
+      fakeLagTitle.style.color = "#00ffff";
+      fakeLagTitle.style.fontSize = "16px";
+      titleContainer.appendChild(fakeLagTitle);
+      fakeLagHeader.appendChild(titleContainer);
+      const fakeLagToggle = document.createElement("button");
+      fakeLagToggle.textContent = fakeLag.enabled ? "Disable" : "Enable";
+      fakeLagToggle.style.padding = "6px 16px";
+      fakeLagToggle.style.background = fakeLag.enabled ? "#d32f2f" : "#2e7d32";
+      fakeLagToggle.style.color = "white";
+      fakeLagToggle.style.border = "none";
+      fakeLagToggle.style.cursor = "pointer";
+      fakeLagToggle.style.borderRadius = "4px";
+      fakeLagToggle.style.fontWeight = "bold";
+      fakeLagToggle.onclick = () => {
+        fakeLag.toggle();
+        fakeLagToggle.textContent = fakeLag.enabled ? "Disable" : "Enable";
+        fakeLagToggle.style.background = fakeLag.enabled ? "#d32f2f" : "#2e7d32";
+      };
+      fakeLagHeader.appendChild(fakeLagToggle);
+      fakeLagSection.appendChild(fakeLagHeader);
+      const contentDiv = document.createElement("div");
+      contentDiv.style.overflow = "hidden";
+      contentDiv.style.transition = "max-height 0.3s ease-out, opacity 0.3s ease-out";
+      contentDiv.style.opacity = isCollapsed ? "0" : "1";
+      contentDiv.style.maxHeight = isCollapsed ? "0px" : "1000px";
+      fakeLagHeader.onclick = (e) => {
+        if (e.target === fakeLagToggle) return;
+        isCollapsed = !isCollapsed;
+        localStorage.setItem("fakeLagCollapsed", isCollapsed);
+        collapseIcon.textContent = isCollapsed ? "\u25B6" : "\u25BC";
+        contentDiv.style.maxHeight = isCollapsed ? "0px" : "1000px";
+        contentDiv.style.opacity = isCollapsed ? "0" : "1";
+      };
+      const settingsGrid = document.createElement("div");
+      settingsGrid.style.display = "grid";
+      settingsGrid.style.gridTemplateColumns = "1fr 1fr";
+      settingsGrid.style.gap = "10px";
+      const createSetting = (label, type, key, options = {}) => {
+        const row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.flexDirection = "column";
+        row.style.gap = "4px";
+        const labelEl = document.createElement("label");
+        labelEl.textContent = label;
+        labelEl.style.color = "#aaa";
+        labelEl.style.fontSize = "12px";
+        row.appendChild(labelEl);
+        if (type === "number") {
+          const input = document.createElement("input");
+          input.type = "number";
+          input.value = fakeLag.settings[key];
+          input.min = options.min || 0;
+          input.max = options.max || 1e4;
+          input.style.background = "#000";
+          input.style.color = "white";
+          input.style.border = "1px solid #444";
+          input.style.padding = "6px";
+          input.style.borderRadius = "4px";
+          input.oninput = (e) => {
+            fakeLag.settings[key] = parseInt(e.target.value) || 0;
+          };
+          row.appendChild(input);
+        } else if (type === "checkbox") {
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = fakeLag.settings[key];
+          checkbox.style.width = "20px";
+          checkbox.style.height = "20px";
+          checkbox.style.cursor = "pointer";
+          checkbox.onchange = (e) => {
+            fakeLag.settings[key] = e.target.checked;
+          };
+          row.appendChild(checkbox);
+        } else if (type === "text") {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = fakeLag.settings[key];
+          input.placeholder = options.placeholder || "";
+          input.style.background = "#000";
+          input.style.color = "white";
+          input.style.border = "1px solid #444";
+          input.style.padding = "6px";
+          input.style.borderRadius = "4px";
+          input.oninput = (e) => {
+            fakeLag.settings[key] = e.target.value;
+          };
+          row.appendChild(input);
+        }
+        return row;
+      };
+      settingsGrid.appendChild(createSetting("Outgoing Delay (ms)", "number", "outgoingDelay", { max: 5e3 }));
+      settingsGrid.appendChild(createSetting("Incoming Delay (ms)", "number", "incomingDelay", { max: 5e3 }));
+      settingsGrid.appendChild(createSetting("Delay Outgoing", "checkbox", "delayOutgoing"));
+      settingsGrid.appendChild(createSetting("Delay Incoming", "checkbox", "delayIncoming"));
+      settingsGrid.appendChild(createSetting("Random Jitter (ms)", "number", "randomJitter", { max: 500 }));
+      settingsGrid.appendChild(createSetting("Burst Interval (ms)", "number", "burstInterval", { max: 1e4 }));
+      settingsGrid.appendChild(createSetting("Burst Mode", "checkbox", "burstMode"));
+      settingsGrid.appendChild(createSetting("Show on HUD", "checkbox", "onHUD"));
+      const filterRow = createSetting("Packet Filter (comma separated)", "text", "packetFilter", { placeholder: "position,look,chat" });
+      filterRow.style.gridColumn = "1 / -1";
+      settingsGrid.appendChild(filterRow);
+      contentDiv.appendChild(settingsGrid);
+      if (fakeLag.settings.burstMode && fakeLag.enabled) {
+        const burstStatus = document.createElement("div");
+        burstStatus.id = "burst-status";
+        burstStatus.style.marginTop = "12px";
+        burstStatus.style.padding = "10px";
+        burstStatus.style.backgroundColor = "#0a0a0f";
+        burstStatus.style.borderRadius = "4px";
+        burstStatus.style.border = "1px solid #444";
+        burstStatus.style.display = "grid";
+        burstStatus.style.gridTemplateColumns = "1fr 1fr";
+        burstStatus.style.gap = "8px";
+        burstStatus.style.fontSize = "13px";
+        const createStatusItem = (label, value, color = "#00ff00") => {
+          const item = document.createElement("div");
+          item.style.display = "flex";
+          item.style.flexDirection = "column";
+          item.style.gap = "2px";
+          const labelEl = document.createElement("span");
+          labelEl.textContent = label;
+          labelEl.style.color = "#888";
+          labelEl.style.fontSize = "11px";
+          item.appendChild(labelEl);
+          const valueEl = document.createElement("span");
+          valueEl.textContent = value;
+          valueEl.style.color = color;
+          valueEl.style.fontWeight = "bold";
+          valueEl.style.fontSize = "16px";
+          valueEl.className = "burst-value";
+          item.appendChild(valueEl);
+          return item;
+        };
+        burstStatus.appendChild(createStatusItem("Next Burst In", "0ms", "#ffaa00"));
+        burstStatus.appendChild(createStatusItem("Queue Size", "0", "#00ffff"));
+        burstStatus.appendChild(createStatusItem("Outgoing Queue", "0", "#00ff00"));
+        burstStatus.appendChild(createStatusItem("Incoming Queue", "0", "#ff00ff"));
+        contentDiv.appendChild(burstStatus);
+        const updateBurstStatus = () => {
+          if (!fakeLag.enabled || !fakeLag.settings.burstMode) {
+            const existingStatus = document.getElementById("burst-status");
+            if (existingStatus) existingStatus.remove();
+            return;
+          }
+          const queueInfo = fakeLag.getQueueInfo();
+          const values = burstStatus.querySelectorAll(".burst-value");
+          if (values[0]) values[0].textContent = `${Math.round(queueInfo.nextBurstIn)}ms`;
+          if (values[1]) values[1].textContent = queueInfo.totalCount;
+          if (values[2]) values[2].textContent = queueInfo.outgoingCount;
+          if (values[3]) values[3].textContent = queueInfo.incomingCount;
+          if (values[0]) {
+            const timeLeft = queueInfo.nextBurstIn;
+            const interval = queueInfo.burstInterval;
+            const percentage = timeLeft / interval;
+            if (percentage < 0.2) values[0].style.color = "#ff0000";
+            else if (percentage < 0.5) values[0].style.color = "#ffaa00";
+            else values[0].style.color = "#00ff00";
+          }
+          setTimeout(updateBurstStatus, 50);
+        };
+        updateBurstStatus();
+      }
+      fakeLagSection.appendChild(contentDiv);
+      contentContainer.appendChild(fakeLagSection);
+    }
+    const packetViewer = modules["packetviewer"];
+    if (!packetViewer) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.textContent = "Packet Viewer module not found.";
+      emptyMsg.style.color = "#555";
+      emptyMsg.style.textAlign = "center";
+      emptyMsg.style.marginTop = "20px";
+      contentContainer.appendChild(emptyMsg);
+      return;
+    }
+    const controlsDiv = document.createElement("div");
+    controlsDiv.style.marginBottom = "10px";
+    controlsDiv.style.padding = "10px";
+    controlsDiv.style.backgroundColor = "#1a1a20";
+    controlsDiv.style.borderRadius = "4px";
+    controlsDiv.style.display = "flex";
+    controlsDiv.style.gap = "10px";
+    controlsDiv.style.alignItems = "center";
+    controlsDiv.style.flexWrap = "wrap";
+    const toggleBtn = document.createElement("button");
+    toggleBtn.textContent = packetViewer.enabled ? "Disable" : "Enable";
+    toggleBtn.style.padding = "4px 12px";
+    toggleBtn.style.background = packetViewer.enabled ? "#d32f2f" : "#2e7d32";
+    toggleBtn.style.color = "white";
+    toggleBtn.style.border = "none";
+    toggleBtn.style.cursor = "pointer";
+    toggleBtn.style.borderRadius = "2px";
+    toggleBtn.onclick = () => {
+      packetViewer.toggle();
+      toggleBtn.textContent = packetViewer.enabled ? "Disable" : "Enable";
+      toggleBtn.style.background = packetViewer.enabled ? "#d32f2f" : "#2e7d32";
+    };
+    controlsDiv.appendChild(toggleBtn);
+    const filterLabel = document.createElement("span");
+    filterLabel.textContent = "Filter:";
+    filterLabel.style.color = "#e0e0e0";
+    controlsDiv.appendChild(filterLabel);
+    const filterInput = document.createElement("input");
+    filterInput.type = "text";
+    filterInput.placeholder = "Packet name...";
+    filterInput.value = packetViewer.settings.filter || "";
+    filterInput.style.background = "#000";
+    filterInput.style.color = "white";
+    filterInput.style.border = "1px solid #444";
+    filterInput.style.padding = "4px 8px";
+    filterInput.style.borderRadius = "2px";
+    filterInput.style.width = "150px";
+    filterInput.oninput = (e) => {
+      packetViewer.settings.filter = e.target.value;
+    };
+    controlsDiv.appendChild(filterInput);
+    const directionLabel = document.createElement("span");
+    directionLabel.textContent = "Direction:";
+    directionLabel.style.color = "#e0e0e0";
+    controlsDiv.appendChild(directionLabel);
+    const directionSelect = document.createElement("select");
+    directionSelect.style.background = "#000";
+    directionSelect.style.color = "white";
+    directionSelect.style.border = "1px solid #444";
+    directionSelect.style.padding = "4px 8px";
+    directionSelect.style.borderRadius = "2px";
+    directionSelect.innerHTML = '<option value="both">Both</option><option value="incoming">Incoming</option><option value="outgoing">Outgoing</option>';
+    directionSelect.value = packetViewer.settings.direction || "both";
+    directionSelect.onchange = (e) => {
+      packetViewer.settings.direction = e.target.value;
+    };
+    controlsDiv.appendChild(directionSelect);
+    const clearBtn = document.createElement("button");
+    clearBtn.textContent = "Clear";
+    clearBtn.style.padding = "4px 12px";
+    clearBtn.style.background = "#333";
+    clearBtn.style.color = "white";
+    clearBtn.style.border = "1px solid #444";
+    clearBtn.style.cursor = "pointer";
+    clearBtn.style.borderRadius = "2px";
+    clearBtn.onclick = () => {
+      packetViewer.packets = [];
+      renderPackets();
+    };
+    controlsDiv.appendChild(clearBtn);
+    contentContainer.appendChild(controlsDiv);
+    const packetList = document.createElement("div");
+    packetList.style.maxHeight = "400px";
+    packetList.style.overflowY = "auto";
+    packetList.style.display = "flex";
+    packetList.style.flexDirection = "column";
+    packetList.style.gap = "5px";
+    if (!packetViewer.packets || packetViewer.packets.length === 0) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.textContent = "No packets captured. Enable packet viewer to start capturing.";
+      emptyMsg.style.color = "#555";
+      emptyMsg.style.textAlign = "center";
+      emptyMsg.style.marginTop = "20px";
+      packetList.appendChild(emptyMsg);
+    } else {
+      const packetsToShow = packetViewer.packets.slice(0, 100);
+      packetsToShow.forEach((packet) => {
+        const packetEl = document.createElement("div");
+        packetEl.style.backgroundColor = "#1a1a20";
+        packetEl.style.padding = "8px";
+        packetEl.style.borderRadius = "4px";
+        packetEl.style.borderLeft = `3px solid ${packet.direction === "incoming" ? "#4caf50" : "#2196f3"}`;
+        packetEl.style.fontSize = "0.85em";
+        packetEl.style.cursor = "pointer";
+        const header2 = document.createElement("div");
+        header2.style.display = "flex";
+        header2.style.justifyContent = "space-between";
+        header2.style.marginBottom = "5px";
+        header2.style.color = packet.direction === "incoming" ? "#4caf50" : "#2196f3";
+        header2.style.fontWeight = "bold";
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = packet.name;
+        header2.appendChild(nameSpan);
+        const timeSpan = document.createElement("span");
+        timeSpan.textContent = new Date(packet.timestamp).toLocaleTimeString();
+        timeSpan.style.color = "#777";
+        timeSpan.style.fontSize = "0.9em";
+        header2.appendChild(timeSpan);
+        packetEl.appendChild(header2);
+        const dataPre = document.createElement("pre");
+        dataPre.style.margin = "0";
+        dataPre.style.color = "#ccc";
+        dataPre.style.fontSize = "0.8em";
+        dataPre.style.maxHeight = "100px";
+        dataPre.style.overflow = "auto";
+        dataPre.style.whiteSpace = "pre-wrap";
+        dataPre.style.wordBreak = "break-all";
+        dataPre.textContent = packet.data.length > 500 ? packet.data.substring(0, 500) + "..." : packet.data;
+        packetEl.appendChild(dataPre);
+        let expanded = false;
+        packetEl.onclick = () => {
+          expanded = !expanded;
+          if (expanded) {
+            dataPre.textContent = packet.data;
+            dataPre.style.maxHeight = "300px";
+          } else {
+            dataPre.textContent = packet.data.length > 500 ? packet.data.substring(0, 500) + "..." : packet.data;
+            dataPre.style.maxHeight = "100px";
+          }
+        };
+        packetList.appendChild(packetEl);
+      });
+    }
+    contentContainer.appendChild(packetList);
+    if (!window.anticlient) window.anticlient = {};
+    if (!window.anticlient.ui) window.anticlient.ui = {};
+    window.anticlient.ui.updatePacketViewer = renderPackets;
+  };
+  const renderTabs = () => {
+    sidebar.innerHTML = "";
+    Object.keys(categories).forEach((cat) => {
+      const tab = document.createElement("div");
+      tab.className = "ac-tab" + (cat === activeTab ? " active" : "");
+      tab.textContent = cat;
+      tab.onclick = () => {
+        activeTab = cat;
+        try {
+          localStorage.setItem("anticlient:activeTab", cat);
+        } catch (e) {
+        }
+        updateLayout();
+        renderTabs();
+        renderModules();
+      };
+      sidebar.appendChild(tab);
+    });
+  };
+  updateLayout();
+  renderTabs();
+  renderModules();
+  let isDragging = false;
+  let currentX;
+  let currentY;
+  let initialX;
+  let initialY;
+  let xOffset = 0;
+  let yOffset = 0;
+  header.addEventListener("mousedown", dragStart);
+  window.addEventListener("mouseup", dragEnd);
+  window.addEventListener("mousemove", drag);
+  function dragStart(e) {
+    initialX = e.clientX - xOffset;
+    initialY = e.clientY - yOffset;
+    if (e.target === header || e.target.closest(".ac-header")) {
+      isDragging = true;
+    }
+  }
+  function dragEnd(e) {
+    initialX = currentX;
+    initialY = currentY;
+    isDragging = false;
+    try {
+      const rect = uiRoot.getBoundingClientRect();
+      localStorage.setItem("anticlient:uiPos", JSON.stringify({
+        top: rect.top + "px",
+        left: rect.left + "px"
+      }));
+    } catch (e2) {
+    }
+  }
+  function drag(e) {
+    if (isDragging) {
+      e.preventDefault();
+      currentX = e.clientX - initialX;
+      currentY = e.clientY - initialY;
+      xOffset = currentX;
+      yOffset = currentY;
+      setTranslate(currentX, currentY, uiRoot);
+    }
+  }
+  function setTranslate(xPos, yPos, el) {
+    el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
+  }
+  const blinkIndicator = document.createElement("div");
+  blinkIndicator.id = "blink-indicator";
+  blinkIndicator.style.position = "fixed";
+  blinkIndicator.style.top = "50%";
+  blinkIndicator.style.left = "50%";
+  blinkIndicator.style.transform = "translate(-50%, 100px)";
+  blinkIndicator.style.padding = "15px 30px";
+  blinkIndicator.style.background = "rgba(124, 77, 255, 0.9)";
+  blinkIndicator.style.border = "2px solid #7c4dff";
+  blinkIndicator.style.borderRadius = "8px";
+  blinkIndicator.style.color = "white";
+  blinkIndicator.style.fontFamily = "'Consolas', 'Monaco', monospace";
+  blinkIndicator.style.fontSize = "16px";
+  blinkIndicator.style.fontWeight = "bold";
+  blinkIndicator.style.zIndex = "99999";
+  blinkIndicator.style.display = "none";
+  blinkIndicator.style.textAlign = "center";
+  blinkIndicator.style.boxShadow = "0 0 20px rgba(124, 77, 255, 0.6)";
+  blinkIndicator.innerHTML = `
+        <div style="margin-bottom: 5px;">\u{1F52E} RECORDING BACKTRACK</div>
+        <div id="blink-stats" style="font-size: 14px; opacity: 0.9;">
+            Positions: <span id="blink-positions">0</span> |
+            Time: <span id="blink-time">0.0</span>s
+        </div>
+        <div style="font-size: 12px; margin-top: 8px; opacity: 0.7;">Release B to teleport back</div>
+    `;
+  document.body.appendChild(blinkIndicator);
+  const blinkUpdateInterval = setInterval(() => {
+    const modules2 = window.anticlient?.modules || {};
+    const blink = modules2["blink"];
+    const showCenterIndicator = !blink?.settings?.onHUD;
+    if (window.anticlient?.blinkUI?.active && showCenterIndicator) {
+      blinkIndicator.style.display = "block";
+      const positions = window.anticlient.blinkUI.positions || 0;
+      const duration = (window.anticlient.blinkUI.duration || 0) / 1e3;
+      document.getElementById("blink-positions").textContent = positions;
+      document.getElementById("blink-time").textContent = duration.toFixed(1);
+    } else {
+      blinkIndicator.style.display = "none";
+    }
+  }, 50);
+  const hudContainer = document.createElement("div");
+  hudContainer.id = "anticlient-hud";
+  hudContainer.style.position = "fixed";
+  hudContainer.style.top = "10px";
+  hudContainer.style.right = "10px";
+  hudContainer.style.zIndex = "9998";
+  hudContainer.style.pointerEvents = "none";
+  hudContainer.style.display = "flex";
+  hudContainer.style.flexDirection = "column";
+  hudContainer.style.gap = "10px";
+  hudContainer.style.fontFamily = "monospace";
+  hudContainer.style.fontSize = "12px";
+  document.body.appendChild(hudContainer);
+  const hudUpdateInterval = setInterval(() => {
+    hudContainer.innerHTML = "";
+    const modules2 = window.anticlient?.modules || {};
+    const fakeLag = modules2["fakelag"];
+    const blink = modules2["blink"];
+    if (blink && blink.enabled && blink.settings.onHUD && window.anticlient?.blinkUI?.active) {
+      const blinkUI = window.anticlient.blinkUI;
+      const panel = document.createElement("div");
+      panel.style.background = "rgba(124, 77, 255, 0.85)";
+      panel.style.border = "2px solid #7c4dff";
+      panel.style.borderRadius = "6px";
+      panel.style.padding = "10px 14px";
+      panel.style.minWidth = "220px";
+      panel.style.backdropFilter = "blur(4px)";
+      panel.style.boxShadow = "0 0 20px rgba(124, 77, 255, 0.6)";
+      const title = document.createElement("div");
+      title.textContent = "\u{1F52E} RECORDING BACKTRACK";
+      title.style.color = "white";
+      title.style.fontWeight = "bold";
+      title.style.marginBottom = "8px";
+      title.style.fontSize = "14px";
+      title.style.textShadow = "0 0 5px rgba(255, 255, 255, 0.5)";
+      title.style.textAlign = "center";
+      panel.appendChild(title);
+      const maxTime = blink.settings.maxRecordTime;
+      const currentTime = blinkUI.duration || 0;
+      const timePercentage = currentTime / maxTime * 100;
+      const progressContainer = document.createElement("div");
+      progressContainer.style.width = "100%";
+      progressContainer.style.height = "8px";
+      progressContainer.style.background = "#1a1a1a";
+      progressContainer.style.borderRadius = "4px";
+      progressContainer.style.overflow = "hidden";
+      progressContainer.style.marginBottom = "8px";
+      progressContainer.style.border = "1px solid rgba(255, 255, 255, 0.3)";
+      const progressBar = document.createElement("div");
+      progressBar.style.width = `${timePercentage}%`;
+      progressBar.style.height = "100%";
+      progressBar.style.transition = "width 0.05s linear, background 0.2s";
+      if (timePercentage > 80) {
+        progressBar.style.background = "linear-gradient(90deg, #ff0000, #ff4444)";
+        progressBar.style.boxShadow = "0 0 8px rgba(255, 0, 0, 0.8)";
+      } else if (timePercentage > 50) {
+        progressBar.style.background = "linear-gradient(90deg, #ffaa00, #ffcc44)";
+        progressBar.style.boxShadow = "0 0 8px rgba(255, 170, 0, 0.8)";
+      } else {
+        progressBar.style.background = "linear-gradient(90deg, #00ff00, #44ff44)";
+        progressBar.style.boxShadow = "0 0 8px rgba(0, 255, 0, 0.8)";
+      }
+      progressContainer.appendChild(progressBar);
+      panel.appendChild(progressContainer);
+      const stats = document.createElement("div");
+      stats.style.display = "grid";
+      stats.style.gridTemplateColumns = "1fr 1fr";
+      stats.style.gap = "8px";
+      stats.style.fontSize = "11px";
+      stats.style.borderTop = "1px solid rgba(255, 255, 255, 0.3)";
+      stats.style.paddingTop = "8px";
+      const createStat = (label, value, color = "#fff") => {
+        const stat = document.createElement("div");
+        stat.style.textAlign = "center";
+        const valueEl = document.createElement("div");
+        valueEl.textContent = value;
+        valueEl.style.color = color;
+        valueEl.style.fontWeight = "bold";
+        valueEl.style.fontSize = "18px";
+        valueEl.style.marginBottom = "2px";
+        valueEl.style.textShadow = `0 0 5px ${color}`;
+        stat.appendChild(valueEl);
+        const labelEl = document.createElement("div");
+        labelEl.textContent = label;
+        labelEl.style.color = "rgba(255, 255, 255, 0.8)";
+        labelEl.style.fontSize = "9px";
+        labelEl.style.textTransform = "uppercase";
+        stat.appendChild(labelEl);
+        return stat;
+      };
+      const positions = blinkUI.positions || 0;
+      const duration = ((blinkUI.duration || 0) / 1e3).toFixed(1);
+      stats.appendChild(createStat("Positions", positions, "#ffffff"));
+      stats.appendChild(createStat("Time", `${duration}s`, "#ffffff"));
+      panel.appendChild(stats);
+      const hint = document.createElement("div");
+      hint.textContent = "Release B to teleport back";
+      hint.style.color = "rgba(255, 255, 255, 0.7)";
+      hint.style.fontSize = "10px";
+      hint.style.textAlign = "center";
+      hint.style.marginTop = "8px";
+      panel.appendChild(hint);
+      hudContainer.appendChild(panel);
+    }
+    if (fakeLag && fakeLag.enabled && fakeLag.settings.onHUD && fakeLag.settings.burstMode) {
+      const queueInfo = fakeLag.getQueueInfo();
+      const panel = document.createElement("div");
+      panel.style.background = "rgba(0, 0, 0, 0.8)";
+      panel.style.border = "2px solid #00ffff";
+      panel.style.borderRadius = "6px";
+      panel.style.padding = "10px 14px";
+      panel.style.minWidth = "220px";
+      panel.style.backdropFilter = "blur(4px)";
+      panel.style.boxShadow = "0 0 15px rgba(0, 255, 255, 0.3)";
+      const title = document.createElement("div");
+      title.textContent = "\u{1F310} Fake Lag";
+      title.style.color = "#00ffff";
+      title.style.fontWeight = "bold";
+      title.style.marginBottom = "8px";
+      title.style.fontSize = "14px";
+      title.style.textShadow = "0 0 5px rgba(0, 255, 255, 0.5)";
+      panel.appendChild(title);
+      const progressLabel = document.createElement("div");
+      progressLabel.textContent = "Next Burst";
+      progressLabel.style.color = "#aaa";
+      progressLabel.style.fontSize = "10px";
+      progressLabel.style.marginBottom = "4px";
+      panel.appendChild(progressLabel);
+      const progressContainer = document.createElement("div");
+      progressContainer.style.width = "100%";
+      progressContainer.style.height = "8px";
+      progressContainer.style.background = "#1a1a1a";
+      progressContainer.style.borderRadius = "4px";
+      progressContainer.style.overflow = "hidden";
+      progressContainer.style.marginBottom = "8px";
+      progressContainer.style.border = "1px solid #333";
+      const progressBar = document.createElement("div");
+      const percentage = queueInfo.nextBurstIn / queueInfo.burstInterval * 100;
+      progressBar.style.width = `${percentage}%`;
+      progressBar.style.height = "100%";
+      progressBar.style.transition = "width 0.05s linear, background 0.2s";
+      if (percentage < 20) {
+        progressBar.style.background = "linear-gradient(90deg, #ff0000, #ff4444)";
+        progressBar.style.boxShadow = "0 0 8px rgba(255, 0, 0, 0.6)";
+      } else if (percentage < 50) {
+        progressBar.style.background = "linear-gradient(90deg, #ffaa00, #ffcc44)";
+        progressBar.style.boxShadow = "0 0 8px rgba(255, 170, 0, 0.6)";
+      } else {
+        progressBar.style.background = "linear-gradient(90deg, #00ff00, #44ff44)";
+        progressBar.style.boxShadow = "0 0 8px rgba(0, 255, 0, 0.6)";
+      }
+      progressContainer.appendChild(progressBar);
+      panel.appendChild(progressContainer);
+      const timeDisplay = document.createElement("div");
+      timeDisplay.textContent = `${Math.round(queueInfo.nextBurstIn)}ms`;
+      timeDisplay.style.color = "#fff";
+      timeDisplay.style.fontSize = "16px";
+      timeDisplay.style.fontWeight = "bold";
+      timeDisplay.style.textAlign = "center";
+      timeDisplay.style.marginBottom = "8px";
+      panel.appendChild(timeDisplay);
+      const stats = document.createElement("div");
+      stats.style.display = "grid";
+      stats.style.gridTemplateColumns = "1fr 1fr 1fr";
+      stats.style.gap = "8px";
+      stats.style.fontSize = "11px";
+      stats.style.borderTop = "1px solid #333";
+      stats.style.paddingTop = "8px";
+      const createStat = (label, value, color = "#fff") => {
+        const stat = document.createElement("div");
+        stat.style.textAlign = "center";
+        const valueEl = document.createElement("div");
+        valueEl.textContent = value;
+        valueEl.style.color = color;
+        valueEl.style.fontWeight = "bold";
+        valueEl.style.fontSize = "16px";
+        valueEl.style.marginBottom = "2px";
+        stat.appendChild(valueEl);
+        const labelEl = document.createElement("div");
+        labelEl.textContent = label;
+        labelEl.style.color = "#888";
+        labelEl.style.fontSize = "9px";
+        labelEl.style.textTransform = "uppercase";
+        stat.appendChild(labelEl);
+        return stat;
+      };
+      stats.appendChild(createStat("Total", queueInfo.totalCount, "#00ffff"));
+      stats.appendChild(createStat("Out", queueInfo.outgoingCount, "#00ff00"));
+      stats.appendChild(createStat("In", queueInfo.incomingCount, "#ff00ff"));
+      panel.appendChild(stats);
+      hudContainer.appendChild(panel);
+    }
+  }, 50);
+  return () => {
+    stop3DPreview();
+    if (previewRenderer) {
+      previewRenderer.dispose();
+      previewRenderer = null;
+    }
+    if (previewScene) {
+      previewScene.clear();
+      previewScene = null;
+    }
+    if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot);
+    if (blockSelectorModal && blockSelectorModal.parentNode) blockSelectorModal.parentNode.removeChild(blockSelectorModal);
+    if (blinkIndicator && blinkIndicator.parentNode) blinkIndicator.parentNode.removeChild(blinkIndicator);
+    if (hudContainer && hudContainer.parentNode) hudContainer.parentNode.removeChild(hudContainer);
+    if (style && style.parentNode) style.parentNode.removeChild(style);
+    if (previewInterval) clearInterval(previewInterval);
+    if (blinkUpdateInterval) clearInterval(blinkUpdateInterval);
+    if (hudUpdateInterval) clearInterval(hudUpdateInterval);
+    window.removeEventListener("keydown", keydownHandler);
+    window.removeEventListener("mouseup", dragEnd);
+    window.removeEventListener("mousemove", drag);
+  };
+};
 
 // anticlient/src/modules/combat.js
-init_Module();
 var loadCombatModules = () => {
   const logger2 = window.anticlientLogger?.module("Combat") || console;
-  let criticalsModule = null;
-  const killaura = new Module("killaura", "Kill Aura", "Combat", "Automatically attacks entities around you", { range: 4.5, speed: 10 });
+  let attackHooks = [];
+  const applyAttackHook = (bot) => {
+    if (!bot || bot._anticlientAttackHooked) return;
+    bot._originalAttack = bot.attack.bind(bot);
+    bot._anticlientAttackHooked = true;
+    bot.attack = (entity) => {
+      for (const hook of attackHooks) {
+        try {
+          hook(bot, entity);
+        } catch (e) {
+        }
+      }
+      return bot._originalAttack(entity);
+    };
+  };
+  const restoreAttackHook = (bot) => {
+    if (!bot || !bot._anticlientAttackHooked) return;
+    bot.attack = bot._originalAttack;
+    delete bot._originalAttack;
+    delete bot._anticlientAttackHooked;
+  };
+  let sharedReach = 3;
+  const killaura = new Module(
+    "killaura",
+    "Kill Aura",
+    "Combat",
+    "Automatically attacks entities around you",
+    {
+      range: 4.5,
+      speed: 10,
+      fov: 360,
+      wallCheck: true,
+      targetSort: "nearest",
+      autoBlock: false,
+      ignoreFriends: true,
+      onlyAxe: false
+    },
+    {
+      targetSort: { type: "dropdown", options: ["nearest", "lowestHealth", "angle"] }
+    }
+  );
   killaura.onTick = (bot) => {
     if (!killaura.lastAttack) killaura.lastAttack = 0;
     const now = Date.now();
     if (now - killaura.lastAttack < 1e3 / killaura.settings.speed) return;
-    const reachModule = modules["reach"];
-    const attackRange = reachModule && reachModule.enabled ? reachModule.settings.reach : killaura.settings.range;
-    const target = bot.nearestEntity((e) => (e.type === "player" || e.type === "mob") && e.position.distanceTo(bot.entity.position) < attackRange && e !== bot.entity);
+    if (bot.getCooldown) {
+      const cooldown = bot.getCooldown();
+      if (cooldown && cooldown < 0.9) return;
+    }
+    const attackRange = modules["reach"] && modules["reach"].enabled ? modules["reach"].settings.reach : killaura.settings.range;
+    const candidates = killaura.settings.targetSort === "nearest" ? [...sharedEntityCache.all] : sharedEntityCache.all;
+    let validTargets = candidates.filter((e) => {
+      if (e === bot.entity) return false;
+      if (e.type !== "player" && e.type !== "mob" && e.type !== "hostile" && e.type !== "animal") return false;
+      const distSq = distanceToSq(bot.entity.position, e.position);
+      if (distSq > attackRange * attackRange) return false;
+      if (killaura.settings.fov < 360) {
+        const dp = e.position.offset(0, e.height * 0.85, 0);
+        const dx = dp.x - bot.entity.position.x - 0;
+        const dy = dp.y - (bot.entity.position.y + bot.entity.eyeHeight);
+        const dz = dp.z - bot.entity.position.z;
+        const yaw = bot.entity.yaw;
+        const pitch = bot.entity.pitch;
+        const dx1 = -Math.sin(yaw) * Math.cos(pitch);
+        const dy1 = Math.sin(pitch);
+        const dz1 = -Math.cos(yaw) * Math.cos(pitch);
+        const dot = dx * dx1 + dy * dy1 + dz * dz1;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const angle = Math.acos(dot / dist) * (180 / Math.PI);
+        if (angle > killaura.settings.fov / 2) return false;
+      }
+      if (killaura.settings.wallCheck && bot.canSeeEntity) {
+        try {
+          if (!bot.canSeeEntity(e)) return false;
+        } catch (err) {
+        }
+      }
+      if (killaura.settings.ignoreFriends && window.anticlient?.friends?.includes(e.username)) {
+        return false;
+      }
+      return true;
+    });
+    if (killaura.settings.targetSort === "lowestHealth") {
+      validTargets.sort((a, b) => (a.health || 20) - (b.health || 20));
+    } else if (killaura.settings.targetSort === "angle") {
+      validTargets.sort((a, b) => {
+        const ya = Math.abs(bot.entity.yaw - Math.atan2(-(a.position.x - bot.entity.position.x), -(a.position.z - bot.entity.position.z)));
+        const yb = Math.abs(bot.entity.yaw - Math.atan2(-(b.position.x - bot.entity.position.x), -(b.position.z - bot.entity.position.z)));
+        return ya - yb;
+      });
+    }
+    const target = validTargets[0];
     if (target) {
       bot.lookAt(target.position.offset(0, target.height * 0.85, 0));
       bot.attack(target);
@@ -109,20 +2312,19 @@ var loadCombatModules = () => {
     }
   };
   registerModule(killaura);
-  const aimbot = new Module("aimbot", "Aimbot", "Combat", "Smooth aim towards nearest entity", {
-    range: 6,
-    smoothness: 0.3,
-    // 0 = instant, 1 = very smooth
-    target: "both"
-    // 'players' | 'mobs' | 'both'
-  });
-  let currentYaw = 0;
-  let currentPitch = 0;
+  const aimbot = new Module(
+    "aimbot",
+    "Aimbot",
+    "Combat",
+    "Smooth aim towards nearest entity",
+    { range: 6, smoothness: 0.3, target: "both" },
+    { target: { type: "dropdown", options: ["players", "mobs", "both"] } }
+  );
+  let aimbotLastTime = 0;
   aimbot.onTick = (bot) => {
-    if (!aimbot.enabled) return;
-    const filter = aimbot.settings.target === "players" ? ((e) => e.type === "player") : aimbot.settings.target === "mobs" ? ((e) => e.type === "mob") : ((e) => e.type === "player" || e.type === "mob");
+    const filter = getTargetFilter(aimbot.settings.target);
     const target = bot.nearestEntity(
-      (e) => filter(e) && e.position.distanceTo(bot.entity.position) < aimbot.settings.range && e !== bot.entity
+      (e) => filter(e) && distanceToSq(bot.entity.position, e.position) < aimbot.settings.range * aimbot.settings.range && e !== bot.entity
     );
     if (target) {
       const eyePos = bot.entity.position.offset(0, bot.entity.eyeHeight, 0);
@@ -130,104 +2332,203 @@ var loadCombatModules = () => {
       const targetYaw = Math.atan2(-delta.x, -delta.z);
       const groundDistance = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
       const targetPitch = Math.atan2(delta.y, groundDistance);
-      const smooth = aimbot.settings.smoothness;
-      currentYaw = bot.entity.yaw + (targetYaw - bot.entity.yaw) * (1 - smooth);
-      currentPitch = bot.entity.pitch + (targetPitch - bot.entity.pitch) * (1 - smooth);
-      bot.look(currentYaw, currentPitch, false);
+      const now = performance.now();
+      const dt = Math.min(now - (aimbotLastTime || now), 100) / 1e3;
+      aimbotLastTime = now;
+      const smooth = Math.pow(aimbot.settings.smoothness, dt * 60);
+      bot.look(
+        bot.entity.yaw + (targetYaw - bot.entity.yaw) * (1 - smooth),
+        bot.entity.pitch + (targetPitch - bot.entity.pitch) * (1 - smooth),
+        false
+      );
     }
   };
   registerModule(aimbot);
   const reach = new Module("reach", "Reach", "Combat", "Extend attack range", { reach: 3.5 });
-  reach.onTick = (bot) => {
+  reach.onSettingChanged = (key, value) => {
+    if (key === "reach") sharedReach = value;
+  };
+  reach.onToggle = (enabled) => {
+    if (enabled) sharedReach = reach.settings.reach;
   };
   registerModule(reach);
-  const criticals = new Module("criticals", "Criticals", "Combat", "Deal critical hits", {
-    mode: "Packet",
-    jumpHeight: 1
-  }, {
-    mode: { type: "dropdown", options: ["Legit", "Packet"] }
-  });
-  criticalsModule = criticals;
-  let lastCriticalAttack = 0;
-  criticals.onEnable = (bot) => {
-    if (!bot._client) return;
-    logger2.info(`Criticals enabled - Mode: ${criticals.settings.mode}`);
-    if (!criticals._originalAttack) {
-      criticals._originalAttack = bot.attack.bind(bot);
+  let lockedTarget = null;
+  const targetLock = new Module(
+    "targetlock",
+    "Target Lock",
+    "Combat",
+    "Lock onto a target so modules don't flip between entities",
+    { stickiness: 3, range: 10 }
+  );
+  let lockFramesUntilReeval = 0;
+  targetLock.onTick = (bot) => {
+    if (lockFramesUntilReeval > 0) {
+      lockFramesUntilReeval--;
+      return;
     }
-    bot.attack = (entity) => {
-      if (criticals.enabled && criticals.settings.mode === "Packet") {
-        logger2.debug("Sending critical packets");
-        sendCriticalPackets(bot);
-      } else if (criticals.enabled && criticals.settings.mode === "Legit") {
-        if (bot.entity.onGround) {
-          logger2.debug("Legit critical jump");
-          bot.entity.velocity.y = 0.42 * criticals.settings.jumpHeight;
-        }
+    lockFramesUntilReeval = targetLock.settings.stickiness;
+    if (lockedTarget && bot.entities[lockedTarget.id]) {
+      const dist = distanceToSq(bot.entity.position, lockedTarget.position);
+      if (dist > targetLock.settings.range * targetLock.settings.range) {
+        lockedTarget = null;
       }
-      criticals._originalAttack(entity);
-    };
-  };
-  criticals.onDisable = (bot) => {
-    logger2.info("Criticals disabled");
-    if (criticals._originalAttack) {
-      bot.attack = criticals._originalAttack;
+    } else {
+      lockedTarget = null;
     }
   };
-  criticals.onSettingChanged = (key, newValue) => {
-    if (key === "mode") {
-      logger2.info(`Criticals mode changed to: ${newValue}`);
+  targetLock.getTarget = () => lockedTarget;
+  targetLock.setTarget = (entity) => {
+    lockedTarget = entity;
+    lockFramesUntilReeval = targetLock.settings.stickiness;
+  };
+  targetLock.clearTarget = () => {
+    lockedTarget = null;
+  };
+  registerModule(targetLock);
+  const triggerBot = new Module(
+    "triggerbot",
+    "TriggerBot",
+    "Combat",
+    "Attack when crosshair is on target (legit alternative)",
+    { onlyPlayers: true, cooldownAware: true }
+  );
+  triggerBot.onTick = (bot) => {
+    if (!bot.entityAtCursor) return;
+    try {
+      const entity = bot.entityAtCursor();
+      if (!entity) return;
+      if (triggerBot.settings.onlyPlayers && entity.type !== "player") return;
+      if (triggerBot.settings.cooldownAware && bot.getCooldown) {
+        const cd = bot.getCooldown();
+        if (cd && cd < 0.85) return;
+      }
+      bot.attack(entity);
+    } catch (e) {
     }
   };
+  registerModule(triggerBot);
+  const criticals = new Module(
+    "criticals",
+    "Criticals",
+    "Combat",
+    "Deal critical hits",
+    { mode: "Packet", jumpHeight: 1 },
+    { mode: { type: "dropdown", options: ["Legit", "Packet", "MiniJump", "GroundSpoof"] } }
+  );
   const sendCriticalPackets = (bot) => {
     if (!bot._client) return;
     const pos = bot.entity.position;
-    const offsets = [0.0625, 0, 0.0625, 0];
-    offsets.forEach((offset) => {
-      bot._client.write("position", {
-        x: pos.x,
-        y: pos.y + offset,
-        z: pos.z,
-        onGround: false
+    if (criticals.settings.mode === "Packet") {
+      const offsets = [PHYSICS.CRIT_OFFSET, 0, PHYSICS.CRIT_OFFSET, 0];
+      offsets.forEach((offset) => {
+        bot._client.write("position", { x: pos.x, y: pos.y + offset, z: pos.z, onGround: false });
       });
-    });
+    } else if (criticals.settings.mode === "MiniJump") {
+      bot._client.write("position", { x: pos.x, y: pos.y + PHYSICS.JUMP_VELOCITY * 0.42, z: pos.z, onGround: false });
+      setTimeout(() => {
+        if (bot._client) bot._client.write("position", { x: pos.x, y: pos.y, z: pos.z, onGround: true });
+      }, 50);
+    } else if (criticals.settings.mode === "GroundSpoof") {
+      bot._client.write("position", { x: pos.x, y: pos.y + 1e-3, z: pos.z, onGround: false });
+    }
   };
-  criticals.onTick = (bot) => {
+  criticals.onEnable = (bot) => {
+    if (!bot) return;
+    applyAttackHook(bot);
+    const hook = (b, entity) => {
+      if (criticals.enabled) {
+        if (criticals.settings.mode === "Packet" || criticals.settings.mode === "MiniJump" || criticals.settings.mode === "GroundSpoof") {
+          sendCriticalPackets(b);
+        } else if (criticals.settings.mode === "Legit") {
+          if (b.entity.onGround) {
+            b.entity.velocity.y = PHYSICS.JUMP_VELOCITY * criticals.settings.jumpHeight;
+          }
+        }
+      }
+    };
+    attackHooks.push(hook);
+    criticals._hook = hook;
+    logger2.info(`Criticals enabled - Mode: ${criticals.settings.mode}`);
+  };
+  criticals.onDisable = (bot) => {
+    if (criticals._hook) {
+      attackHooks = attackHooks.filter((h) => h !== criticals._hook);
+      delete criticals._hook;
+    }
+    if (attackHooks.length === 0 && bot) {
+      restoreAttackHook(bot);
+    }
+    logger2.info("Criticals disabled");
+  };
+  criticals.onSettingChanged = (key, newValue) => {
+    if (key === "mode") logger2.info(`Criticals mode changed to: ${newValue}`);
   };
   registerModule(criticals);
-  const velocity = new Module("velocity", "AntiKnockback", "Combat", "Cancel knockback", {
-    horizontal: true,
-    vertical: false,
-    strength: 0
-    // 0 = full cancel, 1 = no cancel
-  });
-  velocity.onTick = (bot) => {
-    if (velocity.settings.horizontal && velocity.settings.strength < 1) {
-      const reduction = 1 - velocity.settings.strength;
-      bot.entity.velocity.x *= reduction;
-      bot.entity.velocity.z *= reduction;
-    }
-    if (velocity.settings.vertical && velocity.settings.strength < 1) {
-      const reduction = 1 - velocity.settings.strength;
-      bot.entity.velocity.y *= reduction;
+  const velocity = new Module(
+    "velocity",
+    "AntiKnockback",
+    "Combat",
+    "Cancel knockback",
+    { horizontal: true, vertical: false, strength: 0 }
+  );
+  let velocityPacketHandler = null;
+  velocity.onEnable = (bot) => {
+    if (!bot || !bot._client) return;
+    velocityPacketHandler = (parsed) => {
+      if (!velocity.enabled) return;
+      if (velocity.settings.horizontal && velocity.settings.strength < 1) {
+        const reduction = 1 - velocity.settings.strength;
+        bot.entity.velocity.x *= reduction;
+        bot.entity.velocity.z *= reduction;
+      }
+      if (velocity.settings.vertical && velocity.settings.strength < 1) {
+        bot.entity.velocity.y *= 1 - velocity.settings.strength;
+      }
+    };
+    bot._client.on("entity_velocity", velocityPacketHandler);
+  };
+  velocity.onDisable = (bot) => {
+    if (velocityPacketHandler && bot && bot._client) {
+      bot._client.removeListener("entity_velocity", velocityPacketHandler);
+      velocityPacketHandler = null;
     }
   };
   registerModule(velocity);
-  const autoTotem = new Module("autototem", "Auto Totem", "Combat", "Auto-equip totem in offhand", {
-    healthThreshold: 16,
-    // Half hearts
-    checkInterval: 5
-    // Ticks
-  });
+  const autoTotem = new Module(
+    "autototem",
+    "Auto Totem",
+    "Combat",
+    "Auto-equip totem in offhand",
+    { healthThreshold: 16, checkInterval: 5, postPopDelay: 1e3 }
+  );
   let totemTick = 0;
+  let lastTotemPop = 0;
+  autoTotem.onEnable = (bot) => {
+    if (!bot) return;
+    const onDeath = () => {
+      lastTotemPop = Date.now();
+    };
+    bot.on("death", onDeath);
+    autoTotem._deathHandler = onDeath;
+  };
+  autoTotem.onDisable = (bot) => {
+    if (autoTotem._deathHandler && bot) {
+      bot.removeListener("death", autoTotem._deathHandler);
+      delete autoTotem._deathHandler;
+    }
+  };
   autoTotem.onTick = (bot) => {
-    if (!bot.inventory || !bot.inventory.slots) return;
+    if (!bot.inventory?.slots) return;
     totemTick++;
     if (totemTick % autoTotem.settings.checkInterval !== 0) return;
-    const needsTotem = bot.health <= autoTotem.settings.healthThreshold;
+    if (Date.now() - lastTotemPop < autoTotem.settings.postPopDelay) return;
     const offhandItem = bot.inventory.slots[45];
-    if (needsTotem && (!offhandItem || offhandItem.name !== "totem_of_undying")) {
-      const totem = bot.inventory.items().find((item) => item.name === "totem_of_undying");
+    if (bot.usingHeldItem) return;
+    const hasTotem = offhandItem && (offhandItem.name === "totem_of_undying" || offhandItem.name.includes("totem"));
+    if (!hasTotem) {
+      const totem = bot.inventory.items().find(
+        (item) => item.name === "totem_of_undying" || item.name.includes("totem")
+      );
       if (totem) {
         bot.equip(totem, "off-hand").catch(() => {
         });
@@ -235,44 +2536,47 @@ var loadCombatModules = () => {
     }
   };
   registerModule(autoTotem);
-  const autoSoup = new Module("autosoup", "Auto Soup", "Combat", "Auto-consume soup/potions", {
-    healthThreshold: 16,
-    itemType: "soup"
-    // 'soup' | 'potion' | 'both'
-  });
+  const autoSoup = new Module(
+    "autosoup",
+    "Auto Soup",
+    "Combat",
+    "Auto-consume soup/potions",
+    { healthThreshold: 16, itemType: "soup" },
+    { itemType: { type: "dropdown", options: ["soup", "potion", "both"] } }
+  );
   autoSoup.onTick = (bot) => {
-    if (!bot.inventory || !bot.inventory.slots) return;
-    if (bot.health <= autoSoup.settings.healthThreshold && !autoSoup.eating) {
-      let item = null;
-      if (autoSoup.settings.itemType === "soup" || autoSoup.settings.itemType === "both") {
-        item = bot.inventory.items().find((i) => i.name.includes("soup") || i.name.includes("stew"));
-      }
-      if (!item && (autoSoup.settings.itemType === "potion" || autoSoup.settings.itemType === "both")) {
-        item = bot.inventory.items().find((i) => i.name.includes("potion") && (i.name.includes("healing") || i.name.includes("regeneration")));
-      }
-      if (item) {
-        autoSoup.eating = true;
-        bot.equip(item, "hand").then(() => bot.consume()).then(() => {
-          autoSoup.eating = false;
-        }).catch(() => {
-          autoSoup.eating = false;
-        });
-      }
+    if (!bot.inventory?.slots) return;
+    if (bot.health > autoSoup.settings.healthThreshold || autoSoup.eating) return;
+    if (bot.targetDigBlock || bot.pathfinder?.isMoving?.()) return;
+    let item = null;
+    if (autoSoup.settings.itemType === "soup" || autoSoup.settings.itemType === "both") {
+      item = bot.inventory.items().find((i) => i.name.includes("soup") || i.name.includes("stew"));
+    }
+    if (!item && (autoSoup.settings.itemType === "potion" || autoSoup.settings.itemType === "both")) {
+      item = bot.inventory.items().find(
+        (i) => i.name.includes("potion") && (i.name.includes("healing") || i.name.includes("regeneration"))
+      );
+    }
+    if (item) {
+      autoSoup.eating = true;
+      bot.equip(item, "hand").then(() => bot.consume()).then(() => {
+        autoSoup.eating = false;
+      }).catch(() => {
+        autoSoup.eating = false;
+      });
     }
   };
   registerModule(autoSoup);
-  const autoArmor = new Module("autoarmor", "Auto Armor", "Combat", "Equip best armor", {
-    checkInterval: 20
-    // Ticks
-  });
+  const autoArmor = new Module(
+    "autoarmor",
+    "Auto Armor",
+    "Combat",
+    "Equip best armor",
+    { checkInterval: 20 }
+  );
   let aaTick = 0;
   let equippingArmor = false;
-  const armorSlots = {
-    head: 5,
-    torso: 6,
-    legs: 7,
-    feet: 8
-  };
+  const armorSlots = { head: 5, torso: 6, legs: 7, feet: 8 };
   const getArmorValue = (itemName) => {
     if (!itemName || itemName === "air") return 0;
     if (itemName.includes("diamond")) return 100;
@@ -288,9 +2592,10 @@ var loadCombatModules = () => {
     return 0;
   };
   autoArmor.onTick = async (bot) => {
-    if (!bot.inventory || !bot.inventory.slots) return;
+    if (!bot.inventory?.slots) return;
     aaTick++;
     if (aaTick % autoArmor.settings.checkInterval !== 0 || equippingArmor) return;
+    if (bot.targetDigBlock) return;
     equippingArmor = true;
     try {
       for (const [slotName, slotId] of Object.entries(armorSlots)) {
@@ -299,8 +2604,7 @@ var loadCombatModules = () => {
         const betterArmor = bot.inventory.items().find((item) => {
           if (item.slot === slotId) return false;
           if (item.slot < 9 || item.slot >= 36) return false;
-          const itemValue = getArmorValue(item.name);
-          if (itemValue <= currentValue) return false;
+          if (getArmorValue(item.name) <= currentValue) return false;
           if (slotName === "head" && !item.name.includes("helmet") && !item.name.includes("cap")) return false;
           if (slotName === "torso" && !item.name.includes("chestplate") && !item.name.includes("tunic")) return false;
           if (slotName === "legs" && !item.name.includes("leggings") && !item.name.includes("pants")) return false;
@@ -322,62 +2626,59 @@ var loadCombatModules = () => {
     }
   };
   registerModule(autoArmor);
-  const wtap = new Module("wtap", "W-Tap", "Combat", "Auto sprint reset for better knockback", {
-    mode: "W",
-    // 'W' | 'S' | 'Sprint'
-    delay: 50,
-    // ms between tap
-    onlyOnHit: true
-    // Only activate when hitting entity
-  }, {
-    mode: { type: "dropdown", options: ["W", "S", "Sprint"] }
-  });
+  const wtap = new Module(
+    "wtap",
+    "W-Tap",
+    "Combat",
+    "Auto sprint reset for better knockback",
+    { mode: "W", delay: 50, onlyOnHit: true },
+    { mode: { type: "dropdown", options: ["W", "S", "Sprint"] } }
+  );
   let lastWtapTime = 0;
   let wtapActive = false;
-  wtap.onToggle = (enabled) => {
-    const log = window.anticlientLogger?.module("WTap");
-    if (enabled && window.bot) {
-      if (!wtap._originalAttack) {
-        wtap._originalAttack = window.bot.attack.bind(window.bot);
+  wtap.onEnable = (bot) => {
+    if (!bot) return;
+    applyAttackHook(bot);
+    const hook = (b, entity) => {
+      if (wtap.enabled && wtap.settings.onlyOnHit) {
+        performWtap();
       }
-      window.bot.attack = (entity) => {
-        if (wtap.enabled && wtap.settings.onlyOnHit) {
-          performWtap();
-        }
-        return wtap._originalAttack(entity);
-      };
-      if (log) log.info(`W-Tap enabled (${wtap.settings.mode} mode)`);
-    } else if (!enabled) {
-      if (wtap._originalAttack && window.bot) {
-        window.bot.attack = wtap._originalAttack;
-      }
-      if (log) log.info("W-Tap disabled");
+    };
+    attackHooks.push(hook);
+    wtap._hook = hook;
+  };
+  wtap.onDisable = (bot) => {
+    if (wtap._hook) {
+      attackHooks = attackHooks.filter((h) => h !== wtap._hook);
+      delete wtap._hook;
+    }
+    if (attackHooks.length === 0 && bot) {
+      restoreAttackHook(bot);
     }
   };
   const performWtap = () => {
     const now = Date.now();
-    if (now - lastWtapTime < wtap.settings.delay * 2) return;
-    if (wtapActive) return;
+    if (now - lastWtapTime < wtap.settings.delay * 2 || wtapActive) return;
     wtapActive = true;
     lastWtapTime = now;
-    const bot = window.bot;
-    if (!bot) return;
+    const b = window.bot;
+    if (!b) return;
     if (wtap.settings.mode === "W") {
-      bot.setControlState("forward", false);
+      b.setControlState("forward", false);
       setTimeout(() => {
-        bot.setControlState("forward", true);
+        b.setControlState("forward", true);
         wtapActive = false;
       }, wtap.settings.delay);
     } else if (wtap.settings.mode === "S") {
-      bot.setControlState("back", true);
+      b.setControlState("back", true);
       setTimeout(() => {
-        bot.setControlState("back", false);
+        b.setControlState("back", false);
         wtapActive = false;
       }, wtap.settings.delay);
     } else if (wtap.settings.mode === "Sprint") {
-      bot.setSprinting(false);
+      b.setSprinting(false);
       setTimeout(() => {
-        bot.setSprinting(true);
+        b.setSprinting(true);
         wtapActive = false;
       }, wtap.settings.delay);
     }
@@ -388,30 +2689,30 @@ var loadCombatModules = () => {
     }
   };
   registerModule(wtap);
-  const bowAimbot = new Module("bowaimbot", "Bow Aimbot", "Combat", "Predict and aim at moving targets with bow/projectiles", {
-    range: 32,
-    target: "players",
-    // 'players' | 'mobs' | 'both'
-    predict: true,
-    // Enable movement prediction
-    gravity: 0.05,
-    // Arrow gravity
-    velocity: 3,
-    // Arrow velocity (depends on charge)
-    autoCharge: true,
-    // Auto-release at full charge
-    chargeTime: 1e3,
-    // ms for full charge
-    leadAmount: 1,
-    // Lead multiplier (1.0 = perfect lead)
-    visualize: true
-    // Show prediction line
-  }, {
-    target: { type: "dropdown", options: ["players", "mobs", "both"] }
-  });
+  const bowAimbot = new Module(
+    "bowaimbot",
+    "Bow Aimbot",
+    "Combat",
+    "Predict and aim at moving targets with bow/projectiles",
+    {
+      range: 32,
+      target: "players",
+      predict: true,
+      gravity: PHYSICS.GRAVITY,
+      velocity: 3,
+      autoCharge: true,
+      chargeTime: 1e3,
+      leadAmount: 1,
+      visualize: true,
+      stickiness: 10
+    },
+    { target: { type: "dropdown", options: ["players", "mobs", "both"] } }
+  );
   let chargingBow = false;
   let chargeStartTime = 0;
   let predictedHitPos = null;
+  let bowLockedTarget = null;
+  let bowStickTicks = 0;
   const predictProjectileHit = (bot, target, velocity2, gravity) => {
     if (!target || !bot.entity) return null;
     const shooterPos = bot.entity.position.offset(0, bot.entity.eyeHeight, 0);
@@ -421,17 +2722,16 @@ var loadCombatModules = () => {
     let bestError = Infinity;
     for (let t = 0; t < 100; t += 0.05) {
       const predictedTarget = {
-        x: targetPos.x + targetVel.x * t * 20,
-        // Convert ticks to seconds
-        y: targetPos.y + targetVel.y * t * 20,
-        z: targetPos.z + targetVel.z * t * 20
+        x: targetPos.x + targetVel.x * t * PHYSICS.TPS,
+        y: targetPos.y + targetVel.y * t * PHYSICS.TPS,
+        z: targetPos.z + targetVel.z * t * PHYSICS.TPS
       };
       const dx = predictedTarget.x - shooterPos.x;
       const dy = predictedTarget.y - shooterPos.y;
       const dz = predictedTarget.z - shooterPos.z;
       const horizontalDist = Math.sqrt(dx * dx + dz * dz);
       const arrivalTime = horizontalDist / velocity2;
-      const arrowY = shooterPos.y + velocity2 * Math.sin(Math.atan2(dy, horizontalDist)) * arrivalTime - 0.5 * gravity * arrivalTime * arrivalTime * 400;
+      const arrowY = shooterPos.y + velocity2 * Math.sin(Math.atan2(dy, horizontalDist)) * arrivalTime - 0.5 * gravity * arrivalTime * arrivalTime * (PHYSICS.TPS * PHYSICS.TPS);
       const error = Math.abs(arrowY - predictedTarget.y);
       if (error < bestError) {
         bestError = error;
@@ -440,9 +2740,9 @@ var loadCombatModules = () => {
       if (error < 0.1) break;
     }
     return {
-      x: targetPos.x + targetVel.x * bestTime * 20 * bowAimbot.settings.leadAmount,
-      y: targetPos.y + targetVel.y * bestTime * 20 * bowAimbot.settings.leadAmount,
-      z: targetPos.z + targetVel.z * bestTime * 20 * bowAimbot.settings.leadAmount
+      x: targetPos.x + targetVel.x * bestTime * PHYSICS.TPS * bowAimbot.settings.leadAmount,
+      y: targetPos.y + targetVel.y * bestTime * PHYSICS.TPS * bowAimbot.settings.leadAmount,
+      z: targetPos.z + targetVel.z * bestTime * PHYSICS.TPS * bowAimbot.settings.leadAmount
     };
   };
   const calculateProjectileAngle = (bot, targetPos, velocity2, gravity) => {
@@ -454,15 +2754,12 @@ var loadCombatModules = () => {
     const yaw = Math.atan2(-dx, -dz);
     const v2 = velocity2 * velocity2;
     const v4 = v2 * v2;
-    const g = gravity * 400;
+    const g = gravity * (PHYSICS.TPS * PHYSICS.TPS);
     const x = horizontalDist;
     const y = dy;
     const underSqrt = v4 - g * (g * x * x + 2 * y * v2);
     if (underSqrt < 0) {
-      return {
-        yaw,
-        pitch: Math.atan2(dy, horizontalDist)
-      };
+      return { yaw, pitch: Math.atan2(dy, horizontalDist) };
     }
     const pitch = Math.atan((v2 - Math.sqrt(underSqrt)) / (g * x));
     return { yaw, pitch };
@@ -471,13 +2768,23 @@ var loadCombatModules = () => {
     if (!bot.heldItem || !bot.heldItem.name.includes("bow")) {
       chargingBow = false;
       predictedHitPos = null;
+      bowLockedTarget = null;
       return;
     }
-    const filter = bowAimbot.settings.target === "players" ? ((e) => e.type === "player") : bowAimbot.settings.target === "mobs" ? ((e) => e.type === "mob") : ((e) => e.type === "player" || e.type === "mob");
-    const target = bot.nearestEntity(
-      (e) => filter(e) && e.position.distanceTo(bot.entity.position) < bowAimbot.settings.range && e !== bot.entity
-    );
-    if (!target) {
+    const filter = getTargetFilter(bowAimbot.settings.target);
+    if (bowLockedTarget && bowStickTicks > 0) {
+      bowStickTicks--;
+      if (!bot.entities[bowLockedTarget.id] || distanceToSq(bot.entity.position, bowLockedTarget.position) > bowAimbot.settings.range * bowAimbot.settings.range) {
+        bowLockedTarget = null;
+      }
+    }
+    if (!bowLockedTarget) {
+      bowLockedTarget = bot.nearestEntity(
+        (e) => filter(e) && distanceToSq(bot.entity.position, e.position) < bowAimbot.settings.range * bowAimbot.settings.range && e !== bot.entity
+      );
+      bowStickTicks = bowAimbot.settings.stickiness;
+    }
+    if (!bowLockedTarget) {
       chargingBow = false;
       predictedHitPos = null;
       return;
@@ -485,12 +2792,12 @@ var loadCombatModules = () => {
     const chargeLevel = chargingBow ? Math.min(1, (Date.now() - chargeStartTime) / bowAimbot.settings.chargeTime) : 0;
     const currentVelocity = bowAimbot.settings.velocity * (0.5 + chargeLevel * 0.5);
     if (bowAimbot.settings.predict) {
-      predictedHitPos = predictProjectileHit(bot, target, currentVelocity, bowAimbot.settings.gravity);
+      predictedHitPos = predictProjectileHit(bot, bowLockedTarget, currentVelocity, bowAimbot.settings.gravity);
     } else {
       predictedHitPos = {
-        x: target.position.x,
-        y: target.position.y + target.height / 2,
-        z: target.position.z
+        x: bowLockedTarget.position.x,
+        y: bowLockedTarget.position.y + bowLockedTarget.height / 2,
+        z: bowLockedTarget.position.z
       };
     }
     if (predictedHitPos) {
@@ -513,7 +2820,7 @@ var loadCombatModules = () => {
           enabled: true,
           from: bot.entity.position.offset(0, bot.entity.eyeHeight, 0),
           to: predictedHitPos,
-          target: target.position,
+          target: bowLockedTarget.position,
           charge: chargeLevel
         };
       }
@@ -523,16 +2830,27 @@ var loadCombatModules = () => {
     if (!enabled) {
       chargingBow = false;
       predictedHitPos = null;
+      bowLockedTarget = null;
       if (window.anticlient?.visuals) {
         window.anticlient.visuals.projectilePrediction = { enabled: false };
       }
     }
   };
   registerModule(bowAimbot);
+  const humanizer = new Module(
+    "humanizer",
+    "Humanizer",
+    "Combat",
+    "Add randomization to make aim less robotic",
+    { yawNoise: 0.5, pitchNoise: 0.2, missChance: 0, delayNoise: 50 }
+  );
+  humanizer.onTick = (bot) => {
+  };
+  registerModule(humanizer);
+  logger2.info("Combat modules loaded");
 };
 
 // anticlient/src/modules/movement.js
-init_Module();
 var loadMovementModules = () => {
   const flight = new Module("flight", "Flight", "Movement", "Allows you to fly like in creative mode", {
     speed: 1,
@@ -624,23 +2942,29 @@ var loadMovementModules = () => {
   freecam.onToggle = (enabled) => {
     if (!window.bot || !window.bot.entity) return;
     const log = window.anticlientLogger?.module("Freecam");
+    const bot = window.bot;
     if (enabled) {
-      originalPosition = window.bot.entity.position.clone();
-      freecamPosition = window.bot.entity.position.clone();
-      freecamYaw = window.bot.entity.yaw;
-      freecamPitch = window.bot.entity.pitch;
+      originalPosition = bot.entity.position.clone();
+      freecamPosition = bot.entity.position.clone();
+      freecamYaw = bot.entity.yaw;
+      freecamPitch = bot.entity.pitch;
       freecamVelocity = { x: 0, y: 0, z: 0 };
+      freecam._frozenGravity = bot.physics?.gravity;
+      freecam._frozenPhysics = bot.entity._frozen;
+      if (bot.physics) bot.physics.gravity = 0;
+      bot.entity._frozen = true;
+      bot.entity.velocity.set(0, 0, 0);
       if (freecam.settings.interaction) {
         interactionListener = (e) => {
           if (!freecam.enabled || !freecamPosition) return;
           const target = freecam.getTargetBlock();
           if (!target) return;
-          const bot = window.bot;
+          const bot2 = window.bot;
           if (e.button === 0) {
             e.preventDefault();
             e.stopPropagation();
             if (log) log.info(`Freecam dig at ${target.position.x}, ${target.position.y}, ${target.position.z}`);
-            bot.dig(target.block, false).catch((err) => {
+            bot2.dig(target.block, false).catch((err) => {
               if (log) log.warning(`Dig failed: ${err.message}`);
             });
           } else if (e.button === 2) {
@@ -648,9 +2972,9 @@ var loadMovementModules = () => {
             e.stopPropagation();
             const face = freecam.getBlockFace(target.position);
             if (log) log.info(`Freecam interact at ${target.position.x}, ${target.position.y}, ${target.position.z}`);
-            bot.activateBlock(target.block).catch((err) => {
-              if (bot.heldItem) {
-                bot.placeBlock(target.block, new bot.entity.position.constructor(face.x, face.y, face.z)).catch(() => {
+            bot2.activateBlock(target.block).catch((err) => {
+              if (bot2.heldItem) {
+                bot2.placeBlock(target.block, new bot2.entity.position.constructor(face.x, face.y, face.z)).catch(() => {
                 });
               }
             });
@@ -663,6 +2987,16 @@ var loadMovementModules = () => {
         log.info("Freecam interaction enabled - Click to interact from camera position");
       }
     } else {
+      const bot2 = window.bot;
+      if (freecam._frozenGravity !== void 0 && bot2.physics) {
+        bot2.physics.gravity = freecam._frozenGravity;
+      }
+      if (bot2.entity) {
+        bot2.entity._frozen = freecam._frozenPhysics || false;
+        if (originalPosition) {
+          bot2.entity.position.set(originalPosition.x, originalPosition.y, originalPosition.z);
+        }
+      }
       freecamPosition = null;
       freecamVelocity = { x: 0, y: 0, z: 0 };
       if (interactionListener) {
@@ -852,7 +3186,27 @@ var loadMovementModules = () => {
     }
   };
   registerModule(spider);
-  const nofall = new Module("nofall", "NoFall", "Movement", "Avoid fall damage", {});
+  const nofall = new Module("nofall", "NoFall", "Movement", "Avoid fall damage", { packetHook: true });
+  nofall.onEnable = (bot) => {
+    if (!bot || !nofall.settings.packetHook) return;
+    if (!bot._client) return;
+    const origWrite = bot._client.write.bind(bot._client);
+    nofall._origWrite = origWrite;
+    bot._client.write = (name, params) => {
+      if (name === "position" || name === "position_look") {
+        if (params && bot.entity.velocity.y < -0.5) {
+          params.onGround = true;
+        }
+      }
+      return origWrite(name, params);
+    };
+  };
+  nofall.onDisable = (bot) => {
+    if (nofall._origWrite && bot && bot._client) {
+      bot._client.write = nofall._origWrite;
+      delete nofall._origWrite;
+    }
+  };
   nofall.onTick = (bot) => {
     if (bot.entity.velocity.y < -0.5) {
       bot.entity.onGround = true;
@@ -950,19 +3304,42 @@ var loadMovementModules = () => {
       if (log) log.info("Blink enabled - Hold keybind to record path, release to teleport back");
     }
   };
+  blink.onEnable = (bot) => {
+    if (!bot) return;
+    blink._onDeath = () => {
+      positionHistory = [];
+      recordStartPos = null;
+      isRecording = false;
+      updateBlinkUI();
+    };
+    bot.on("death", blink._onDeath);
+  };
+  blink.onDisable = (bot) => {
+    if (blink._onDeath && bot) {
+      bot.removeListener("death", blink._onDeath);
+      delete blink._onDeath;
+    }
+  };
   blink.onTick = (bot) => {
     if (!bot || !bot.entity || !bot.entity.position) return;
     const now = Date.now();
     if (isRecording) {
       if (now - (positionHistory[positionHistory.length - 1]?.time || 0) >= blink.settings.recordInterval) {
-        positionHistory.push({
-          pos: bot.entity.position.clone(),
-          time: now
-        });
+        positionHistory.push({ pos: bot.entity.position.clone(), time: now });
         const cutoffTime = now - blink.settings.maxRecordTime;
         positionHistory = positionHistory.filter((p) => p.time >= cutoffTime);
+        if (positionHistory.length > 500) {
+          positionHistory = positionHistory.slice(-500);
+        }
         updateBlinkUI();
       }
+    }
+    const lastPos = positionHistory[positionHistory.length - 1];
+    if (lastPos && lastPos.pos.distanceTo(bot.entity.position) > 10) {
+      positionHistory = [];
+      isRecording = false;
+      recordStartPos = null;
+      updateBlinkUI();
     }
   };
   window.addEventListener("keydown", (e) => {
@@ -1021,7 +3398,8 @@ var loadMovementModules = () => {
   registerModule(antiKnockback);
   const elytraFly = new Module("elytrafly", "Elytra Fly", "Movement", "Auto-activate and control elytra", {
     autoActivate: true,
-    speed: 1
+    speed: 1,
+    maxSpeed: 2
   });
   elytraFly.onTick = (bot) => {
     if (!bot.inventory || !bot.inventory.slots) return;
@@ -1035,7 +3413,7 @@ var loadMovementModules = () => {
     }
     if (bot.entity.elytraFlying) {
       const yaw = bot.entity.yaw;
-      const speed2 = elytraFly.settings.speed;
+      const speed2 = Math.min(elytraFly.settings.speed, elytraFly.settings.maxSpeed);
       if (bot.controlState.forward) {
         bot.entity.velocity.x = -Math.sin(yaw) * speed2;
         bot.entity.velocity.z = -Math.cos(yaw) * speed2;
@@ -1053,6 +3431,7 @@ var loadMovementModules = () => {
   registerModule(elytraFly);
   scaffold.settings.range = 5;
   scaffold.settings.sneakOnly = false;
+  scaffold.settings.rotation = true;
   scaffold.onTick = (bot) => {
     if (!bot.inventory || !bot.inventory.slots) return;
     if (scaffold.settings.sneakOnly && !bot.controlState.sneak) return;
@@ -1063,6 +3442,9 @@ var loadMovementModules = () => {
         (i) => i.name !== "air" && !i.name.includes("sword") && !i.name.includes("pickaxe") && !i.name.includes("axe") && !i.name.includes("shovel")
       );
       if (item) {
+        if (scaffold.settings.rotation) {
+          bot.look(bot.entity.yaw, Math.PI / 2, false);
+        }
         bot.equip(item, "hand").then(() => {
           const referenceBlock = bot.blockAt(pos.offset(0, -2, 0));
           if (referenceBlock && referenceBlock.boundingBox !== "empty") {
@@ -1311,15 +3693,15 @@ var loadMovementModules = () => {
   const boatFly = new Module("boatfly", "Boat Fly", "Movement", "Fly using boats", {
     speed: 2,
     verticalSpeed: 1,
+    maxSpeed: 4,
     glide: true
-    // Glide instead of fall
   });
   boatFly.onTick = (bot) => {
     if (!bot.entity || !bot.vehicle) return;
     const vehicle = bot.vehicle;
     if (!vehicle || !vehicle.name?.includes("boat")) return;
     const yaw = bot.entity.yaw;
-    const speed2 = boatFly.settings.speed;
+    const speed2 = Math.min(boatFly.settings.speed, boatFly.settings.maxSpeed);
     if (bot.controlState.forward) {
       vehicle.velocity.x = -Math.sin(yaw) * speed2;
       vehicle.velocity.z = -Math.cos(yaw) * speed2;
@@ -1460,10 +3842,42 @@ var loadMovementModules = () => {
   registerModule(autoSneak);
 };
 
+// anticlient/src/core/sanitizer.js
+var sanitizeHTML = (str) => {
+  if (!str) return "";
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+};
+
 // anticlient/src/modules/render.js
-init_Module();
 var loadRenderModules = () => {
   const fullbright = new Module("fullbright", "Fullbright", "Render", "See in the dark", { gamma: 1 });
+  fullbright.onEnable = (bot) => {
+    if (window.viewer?.world) {
+      fullbright._origGamma = window.viewer.world.gamma;
+      window.viewer.world.gamma = fullbright.settings.gamma;
+    }
+    if (window.options) {
+      fullbright._origBrightness = window.options.brightness;
+      window.options.brightness = 1;
+    }
+  };
+  fullbright.onDisable = (bot) => {
+    if (window.viewer?.world && fullbright._origGamma !== void 0) {
+      window.viewer.world.gamma = fullbright._origGamma;
+      delete fullbright._origGamma;
+    }
+    if (window.options && fullbright._origBrightness !== void 0) {
+      window.options.brightness = fullbright._origBrightness;
+      delete fullbright._origBrightness;
+    }
+  };
+  fullbright.onSettingChanged = (key, newValue) => {
+    if (key === "gamma" && fullbright.enabled && window.viewer?.world) {
+      window.viewer.world.gamma = newValue;
+    }
+  };
   registerModule(fullbright);
   const esp = new Module("esp", "ESP", "Render", "See entities through walls", {
     playerColor: "#00ffff",
@@ -1654,7 +4068,7 @@ var loadRenderModules = () => {
       if (distance > nameTags.settings.range) continue;
       entities.push({
         id: parseInt(id),
-        name: entity.username || entity.displayName || "Unknown",
+        name: sanitizeHTML(entity.username || entity.displayName || entity.name || "Unknown"),
         position: {
           x: entity.position.x,
           y: entity.position.y + (entity.height || 1.8) + 0.5,
@@ -1805,9 +4219,8 @@ var loadRenderModules = () => {
   hudOverlay.onTick = (bot) => {
     if (!hudElement) return;
     const lines = [];
-    lines.push(`<div style="color: #b388ff; font-weight: bold; margin-bottom: 5px; text-align: center; border-bottom: 1px solid #7c4dff; padding-bottom: 5px;">ANTICLIENT</div>`);
-    const { modules: modules2 } = (init_Module(), __toCommonJS(Module_exports));
-    const blinkModule = modules2["blink"];
+    lines.push(`<div style="color: #b388ff; font-weight: bold; margin-bottom: 5px; text-align: center; border-bottom: 1px solid #7c4dff; padding-bottom: 5px;">${sanitizeHTML("ANTICLIENT")}</div>`);
+    const blinkModule = modules["blink"];
     if (blinkModule && blinkModule.enabled && blinkModule.settings.onHUD) {
       const info = blinkModule.getHUDInfo();
       if (info.active) {
@@ -1828,7 +4241,7 @@ var loadRenderModules = () => {
         lines.push(`<div style="color: #888; font-size: 12px; margin-top: 5px;">Blink: Ready</div>`);
       }
     }
-    const fakeLagModule = modules2["fakelag"];
+    const fakeLagModule = modules["fakelag"];
     if (fakeLagModule && fakeLagModule.enabled && fakeLagModule.settings.onHUD) {
       const info = fakeLagModule.getQueueInfo();
       lines.push(`<div style="color: #ffaa00; margin-top: 8px;">`);
@@ -1875,8 +4288,7 @@ var loadRenderModules = () => {
     opacity: 0.7
   });
   blinkTrail.onRender = (bot) => {
-    const { modules: modules2 } = (init_Module(), __toCommonJS(Module_exports));
-    const blinkModule = modules2["blink"];
+    const blinkModule = modules["blink"];
     if (!window.anticlient) window.anticlient = { visuals: {} };
     if (!window.anticlient.visuals) window.anticlient.visuals = {};
     if (blinkModule && blinkModule.enabled && blinkModule.settings.visualizeTrail) {
@@ -2301,7 +4713,6 @@ var loadRenderModules = () => {
 };
 
 // anticlient/src/modules/player.js
-init_Module();
 var loadPlayerModules = () => {
   const autoEat = new Module("autoeat", "Auto Eat", "Player", "Automatically eats food when hungry", {
     healthThreshold: 16,
@@ -2335,26 +4746,6 @@ var loadPlayerModules = () => {
     }
   };
   registerModule(autoEat);
-  const autoTotem = new Module("autototem", "Auto Totem", "Player", "Auto-equip totem in offhand", {
-    healthThreshold: 16,
-    checkInterval: 5
-  });
-  let totemTick = 0;
-  autoTotem.onTick = (bot) => {
-    if (!bot.inventory || !bot.inventory.slots) return;
-    totemTick++;
-    if (totemTick % autoTotem.settings.checkInterval !== 0) return;
-    const needsTotem = bot.health <= autoTotem.settings.healthThreshold;
-    const offhandItem = bot.inventory.slots[45];
-    if (needsTotem && (!offhandItem || offhandItem.name !== "totem_of_undying")) {
-      const totem = bot.inventory.items().find((item) => item.name === "totem_of_undying");
-      if (totem) {
-        bot.equip(totem, "off-hand").catch(() => {
-        });
-      }
-    }
-  };
-  registerModule(autoTotem);
   const inventorySorter = new Module("inventorysorter", "Inventory Sorter", "Player", "Auto-organize inventory", {
     enabled: false,
     sortBy: "type"
@@ -2919,24 +5310,25 @@ var loadPlayerModules = () => {
       originalChatHandler = window.bot.listeners("message")?.[0];
       window.bot.on("message", (jsonMsg, position) => {
         if (!chatImprovements.enabled) return;
-        const message = jsonMsg.toString();
+        const message = String(jsonMsg.toString());
         const now = Date.now();
         if (chatImprovements.settings.filterSpam) {
           const recentSame = chatMessages.filter(
             (m) => m.text === message && now - m.time < 5e3
           ).length;
           if (recentSame >= chatImprovements.settings.spamThreshold) {
-            if (log) log.debug(`Filtered spam: ${message}`);
+            if (log) log.debug(`Filtered spam`);
             return;
           }
         }
-        chatMessages.push({ text: message, time: now });
+        const sanitized = String(message).replace(/<[^>]*>/g, "");
+        chatMessages.push({ text: sanitized, time: now });
         if (chatMessages.length > 100) {
           chatMessages = chatMessages.slice(-100);
         }
         if (chatImprovements.settings.highlightMentions && window.bot.username) {
-          if (message.toLowerCase().includes(window.bot.username.toLowerCase())) {
-            if (log) log.info(`You were mentioned: ${message}`);
+          if (sanitized.toLowerCase().includes(window.bot.username.toLowerCase())) {
+            if (log) log.info(`You were mentioned in chat`);
           }
         }
       });
@@ -2964,6 +5356,8 @@ var loadPlayerModules = () => {
     mode: { type: "dropdown", options: ["Add", "Set", "Random"] }
   });
   let originalKeepAlive = null;
+  let keepAliveTimeout = null;
+  const MAX_KEEPALIVE_DELAY = 29e3;
   pingSpoof.onToggle = (enabled) => {
     const log = window.anticlientLogger?.module("PingSpoof");
     if (enabled && window.bot && window.bot._client) {
@@ -2981,6 +5375,7 @@ var loadPlayerModules = () => {
           } else if (pingSpoof.settings.mode === "Random") {
             delay = pingSpoof.settings.randomMin + Math.random() * (pingSpoof.settings.randomMax - pingSpoof.settings.randomMin);
           }
+          delay = Math.min(delay, MAX_KEEPALIVE_DELAY);
           setTimeout(() => {
             originalKeepAlive(name, data);
           }, delay);
@@ -3001,7 +5396,6 @@ var loadPlayerModules = () => {
 };
 
 // anticlient/src/modules/world.js
-init_Module();
 var loadWorldModules = () => {
   const nuker = new Module("nuker", "Nuker", "World", "Break blocks around you", {
     range: 4,
@@ -3023,6 +5417,7 @@ var loadWorldModules = () => {
       maxDistance: nuker.settings.range
     });
     if (target) {
+      bot.lookAt(target.position.offset(0.5, 0.5, 0.5));
       bot.dig(target).catch((e) => {
       });
     }
@@ -3043,18 +5438,25 @@ var loadWorldModules = () => {
     }
   };
   registerModule(fastPlace);
-  const fastBreak = new Module("fastbreak", "Fast Break", "World", "Break blocks faster", { multiplier: 0.5 });
+  const fastBreak = new Module("fastbreak", "Fast Break", "World", "Break blocks faster", { multiplier: 0.5, maxMultiply: 0.3, legitCap: true });
   let originalDigTime = null;
-  fastBreak.onToggle = (enabled) => {
-    if (!window.bot) return;
-    if (enabled && !originalDigTime) {
-      originalDigTime = window.bot.digTime.bind(window.bot);
-      window.bot.digTime = function(block) {
+  fastBreak.onEnable = (bot) => {
+    if (!bot) return;
+    if (!originalDigTime) {
+      originalDigTime = bot.digTime.bind(bot);
+      bot.digTime = function(block) {
         const originalTime = originalDigTime(block);
-        return originalTime * fastBreak.settings.multiplier;
+        let result = originalTime * fastBreak.settings.multiplier;
+        if (fastBreak.settings.legitCap) {
+          result = Math.max(result, originalTime * fastBreak.settings.maxMultiply);
+        }
+        return result;
       };
-    } else if (!enabled && originalDigTime) {
-      window.bot.digTime = originalDigTime;
+    }
+  };
+  fastBreak.onDisable = (bot) => {
+    if (originalDigTime && bot) {
+      bot.digTime = originalDigTime;
       originalDigTime = null;
     }
   };
@@ -3244,7 +5646,6 @@ var loadWorldModules = () => {
 };
 
 // anticlient/src/modules/client.js
-init_Module();
 var loadClientModules = () => {
   const settings = new Module("client_settings", "Client Settings", "Settings", "Client configuration", {
     theme: "Default",
@@ -3317,17 +5718,31 @@ var loadClientModules = () => {
 };
 
 // anticlient/src/modules/packets.js
-init_Module();
 var loadPacketsModules = () => {
-  const packetViewer = new Module("packetviewer", "Packet Viewer", "Packets", "View all Minecraft network packets", {
-    enabled: false,
-    maxPackets: 100,
-    filter: "",
-    direction: "both"
-    // 'incoming' | 'outgoing' | 'both'
-  });
+  const packetViewer = new Module(
+    "packetviewer",
+    "Packet Viewer",
+    "Packets",
+    "View all Minecraft network packets",
+    { enabled: false, maxPackets: 100, filter: "", direction: "both", paused: false, throttleMs: 0 },
+    { direction: { type: "dropdown", options: ["both", "incoming", "outgoing"] } }
+  );
   packetViewer.packets = [];
   let packetListeners = [];
+  packetViewer.clearPackets = () => {
+    packetViewer.packets = [];
+  };
+  packetViewer.exportPackets = () => {
+    const data = JSON.stringify(packetViewer.packets, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `packets_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  let lastPacketTime = 0;
   packetViewer.onToggle = (enabled) => {
     if (enabled && (!window.bot || !window.bot._client)) {
       const checkBot = setInterval(() => {
@@ -3342,9 +5757,10 @@ var loadPacketsModules = () => {
     if (!window.bot || !window.bot._client) return;
     if (enabled) {
       packetViewer.packets = [];
+      lastPacketTime = 0;
       const originalWrite = window.bot._client.write.bind(window.bot._client);
       window.bot._client.write = function(name, params) {
-        if (packetViewer.enabled && (packetViewer.settings.direction === "both" || packetViewer.settings.direction === "outgoing")) {
+        if (packetViewer.enabled && !packetViewer.settings.paused && (packetViewer.settings.direction === "both" || packetViewer.settings.direction === "outgoing")) {
           addPacket("outgoing", name, params);
         }
         return originalWrite(name, params);
@@ -3384,7 +5800,7 @@ var loadPacketsModules = () => {
       ];
       commonEvents.forEach((eventName) => {
         const listener = (...args) => {
-          if (packetViewer.enabled && (packetViewer.settings.direction === "both" || packetViewer.settings.direction === "incoming")) {
+          if (packetViewer.enabled && !packetViewer.settings.paused && (packetViewer.settings.direction === "both" || packetViewer.settings.direction === "incoming")) {
             addPacket("incoming", eventName, args);
           }
         };
@@ -3403,52 +5819,55 @@ var loadPacketsModules = () => {
     }
   };
   const addPacket = (direction, name, data) => {
+    if (packetViewer.settings.throttleMs > 0) {
+      const now = Date.now();
+      if (now - lastPacketTime < packetViewer.settings.throttleMs) return;
+      lastPacketTime = now;
+    }
+    const filter = packetViewer.settings.filter;
+    if (filter && filter.trim() !== "") {
+      const f = filter.toLowerCase();
+      if (!name.toLowerCase().includes(f)) return;
+    }
     const packet = {
       direction,
-      name,
-      data: JSON.stringify(data, null, 2),
+      name: sanitizeHTML(name),
+      data: sanitizeHTML(JSON.stringify(data, null, 2)),
       timestamp: Date.now(),
       id: Math.random().toString(36).substr(2, 9)
     };
-    if (packetViewer.settings.filter && packetViewer.settings.filter.trim() !== "") {
-      const filter = packetViewer.settings.filter.toLowerCase();
-      if (!name.toLowerCase().includes(filter) && !packet.data.toLowerCase().includes(filter)) {
-        return;
-      }
-    }
     packetViewer.packets.unshift(packet);
     if (packetViewer.packets.length > packetViewer.settings.maxPackets) {
       packetViewer.packets.pop();
     }
-    if (window.anticlient && window.anticlient.ui && window.anticlient.ui.updatePacketViewer) {
+    if (window.anticlient?.ui?.updatePacketViewer) {
       window.anticlient.ui.updatePacketViewer();
     }
   };
   registerModule(packetViewer);
-  const fakeLag = new Module("fakelag", "Fake Lag", "Packets", "Delay outgoing/incoming packets to simulate lag", {
-    enabled: false,
-    outgoingDelay: 100,
-    // ms
-    incomingDelay: 100,
-    // ms
-    delayOutgoing: true,
-    delayIncoming: false,
-    packetFilter: "",
-    // Filter specific packets (comma separated)
-    randomJitter: 0,
-    // Random jitter in ms (0-100)
-    burstMode: false,
-    // Send all delayed packets at once
-    burstInterval: 1e3,
-    // ms between bursts
-    onHUD: true
-    // Always show on HUD overlay
-  });
+  const fakeLag = new Module(
+    "fakelag",
+    "Fake Lag",
+    "Packets",
+    "Delay outgoing/incoming packets to simulate lag",
+    {
+      enabled: false,
+      outgoingDelay: 100,
+      incomingDelay: 100,
+      delayOutgoing: true,
+      delayIncoming: false,
+      packetFilter: "",
+      randomJitter: 0,
+      burstMode: false,
+      burstInterval: 1e3,
+      onHUD: true,
+      preserveOrder: true
+    }
+  );
   let outgoingQueue = [];
   let incomingQueue = [];
   let burstTimer = null;
   let incomingListeners = [];
-  let burstStartTime = 0;
   let lastBurstTime = 0;
   fakeLag.getQueueInfo = () => ({
     outgoingCount: outgoingQueue.length,
@@ -3481,7 +5900,7 @@ var loadPacketsModules = () => {
         if (shouldDelayPacket(name)) {
           const delay = calculateDelay(fakeLag.settings.outgoingDelay, fakeLag.settings.randomJitter);
           if (fakeLag.settings.burstMode) {
-            outgoingQueue.push({ name, params, originalWrite });
+            outgoingQueue.push({ name, params, originalWrite, sequence: outgoingQueue.length });
           } else {
             setTimeout(() => {
               if (fakeLag.enabled) {
@@ -3522,13 +5941,11 @@ var loadPacketsModules = () => {
         ];
         commonEvents.forEach((eventName) => {
           const delayedListener = (...args) => {
-            if (!fakeLag.enabled || !fakeLag.settings.delayIncoming) {
-              return;
-            }
+            if (!fakeLag.enabled || !fakeLag.settings.delayIncoming) return;
             if (shouldDelayPacket(eventName)) {
               const delay = calculateDelay(fakeLag.settings.incomingDelay, fakeLag.settings.randomJitter);
               if (fakeLag.settings.burstMode) {
-                incomingQueue.push({ event: eventName, args });
+                incomingQueue.push({ event: eventName, args, sequence: incomingQueue.length });
               } else {
                 setTimeout(() => {
                   if (fakeLag.enabled) {
@@ -3546,6 +5963,10 @@ var loadPacketsModules = () => {
         lastBurstTime = Date.now();
         burstTimer = setInterval(() => {
           lastBurstTime = Date.now();
+          if (fakeLag.settings.preserveOrder) {
+            outgoingQueue.sort((a, b) => a.sequence - b.sequence);
+            incomingQueue.sort((a, b) => a.sequence - b.sequence);
+          }
           while (outgoingQueue.length > 0) {
             const { name, params, originalWrite: originalWrite2 } = outgoingQueue.shift();
             if (fakeLag.enabled) {
@@ -3600,7 +6021,6 @@ var loadPacketsModules = () => {
 };
 
 // anticlient/src/modules/projectile.js
-init_Module();
 var loadProjectileModules = () => {
   const logger2 = window.anticlientLogger?.module("Projectile") || console;
   const TrajectoryInfo = {
@@ -3993,1838 +6413,82 @@ var loadProjectileModules = () => {
 };
 
 // anticlient/entry.js
-init_Module();
-
-// anticlient/src/ui/index.js
-init_Module();
-var initUI = () => {
-  const existingRoot = document.getElementById("anticlient-root");
-  if (existingRoot) existingRoot.remove();
-  const existingStyle = document.getElementById("anticlient-style");
-  if (existingStyle) existingStyle.remove();
-  const uiRoot = document.createElement("div");
-  uiRoot.id = "anticlient-root";
-  uiRoot.style.position = "fixed";
-  uiRoot.style.top = "100px";
-  uiRoot.style.left = "100px";
-  uiRoot.style.zIndex = "10000";
-  uiRoot.style.fontFamily = "'Consolas', 'Monaco', monospace";
-  uiRoot.style.userSelect = "none";
-  uiRoot.style.display = "none";
-  const toggleUi = () => {
-    const isOpening = uiRoot.style.display === "none";
-    uiRoot.style.display = isOpening ? "block" : "none";
-    if (window.activeModalStack && Array.isArray(window.activeModalStack)) {
-      if (isOpening) {
-        const modalObject = {
-          reactType: "AnticlientMenu",
-          id: "anticlient-menu"
-        };
-        window.activeModalStack.push(modalObject);
-      } else {
-        const lastModal = window.activeModalStack[window.activeModalStack.length - 1];
-        if (lastModal && lastModal.id === "anticlient-menu") {
-          window.activeModalStack.pop();
-        }
-      }
-    }
-  };
-  const keydownHandler = (e) => {
-    if (e.code === "ShiftRight" && !document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
-      toggleUi();
-    }
-    if (!document.activeElement.tagName.match(/INPUT|TEXTAREA/)) {
-      Object.values(modules).forEach((mod) => {
-        if (mod.bind && e.code === mod.bind && !mod.customKeybind) {
-          mod.toggle();
-        }
-      });
-    }
-  };
-  window.addEventListener("keydown", keydownHandler);
-  const style = document.createElement("style");
-  style.id = "anticlient-style";
-  document.head.appendChild(style);
-  const themes = {
-    Default: `
-            .ac-window {
-                background-color: #0f0f13;
-                border: 2px solid #7c4dff;
-                border-radius: 8px;
-                box-shadow: 0 0 15px rgba(124, 77, 255, 0.3);
-                color: #e0e0e0;
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-                height: 500px;
-                width: 650px;
-                transition: width 0.3s ease;
-                font-family: 'Consolas', 'Monaco', monospace;
-            }
-            .ac-window.expanded { width: 950px; }
-            .ac-header {
-                background-color: #1a1a20;
-                padding: 10px 15px;
-                border-bottom: 2px solid #7c4dff;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                cursor: move;
-                flex-shrink: 0;
-            }
-            .ac-title { font-weight: bold; color: #b388ff; font-size: 1.1em; letter-spacing: 1px; }
-            .ac-sidebar {
-                width: 150px;
-                background-color: #15151a;
-                display: flex;
-                flex-direction: column;
-                border-right: 1px solid #333;
-                flex-shrink: 0;
-            }
-            .ac-tab {
-                text-align: left;
-                padding: 15px 20px;
-                cursor: pointer;
-                background-color: transparent;
-                transition: background-color 0.2s, color 0.2s;
-                border-left: 3px solid transparent;
-                color: #777;
-                font-weight: 500;
-            }
-            .ac-tab:hover { background-color: #20202a; color: #fff; }
-            .ac-tab.active { color: #b388ff; border-left: 3px solid #b388ff; background-color: #1e1e24; }
-            .ac-module {
-                background-color: #1a1a20;
-                margin-bottom: 8px;
-                padding: 10px;
-                border-radius: 4px;
-                display: flex;
-                flex-direction: column;
-                border-left: 3px solid #333;
-                transition: border-left-color 0.2s;
-            }
-            .ac-module.enabled { border-left: 3px solid #00e676; }
-            .ac-setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; }
-            .ac-input-number, .ac-input-text { background: #000; border: 1px solid #444; color: white; padding: 2px; border-radius: 2px; }
-            .ac-checkbox { accent-color: #7c4dff; }
-            .ac-preview-panel {
-                background-color: #111;
-                border-left: 1px solid #333;
-            }
-        `,
-    Arwes: `
-            .ac-window {
-                background-color: rgba(0, 20, 20, 0.9);
-                border: 1px solid #26dafd;
-                box-shadow: 0 0 20px rgba(38, 218, 253, 0.2);
-                color: #a9fdff;
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-                height: 500px;
-                width: 650px;
-                transition: width 0.3s ease;
-                font-family: 'Titillium Web', sans-serif;
-                clip-path: polygon(
-                    0 0, 100% 0, 
-                    100% calc(100% - 20px), calc(100% - 20px) 100%, 
-                    0 100%
-                );
-            }
-            .ac-window.expanded { width: 950px; }
-            .ac-header {
-                background-color: rgba(6, 61, 68, 0.6);
-                padding: 10px 15px;
-                border-bottom: 1px solid #26dafd;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                cursor: move;
-                flex-shrink: 0;
-                text-shadow: 0 0 5px rgba(38, 218, 253, 0.5);
-            }
-            .ac-title { font-weight: bold; color: #26dafd; font-size: 1.2em; letter-spacing: 2px; }
-            .ac-sidebar {
-                width: 150px;
-                background-color: rgba(0, 10, 10, 0.5);
-                display: flex;
-                flex-direction: column;
-                border-right: 1px solid #1b90a8;
-                flex-shrink: 0;
-            }
-            .ac-tab {
-                text-align: left;
-                padding: 15px 20px;
-                cursor: pointer;
-                background-color: transparent;
-                transition: all 0.2s;
-                border-left: 2px solid transparent;
-                color: #1b90a8;
-                font-weight: 500;
-                opacity: 0.7;
-            }
-            .ac-tab:hover { background-color: rgba(38, 218, 253, 0.1); color: #a9fdff; opacity: 1; text-shadow: 0 0 8px rgba(38, 218, 253, 0.6); }
-            .ac-tab.active { color: #26dafd; border-left: 2px solid #26dafd; background-color: rgba(38, 218, 253, 0.15); opacity: 1; box-shadow: 0 0 10px rgba(38, 218, 253, 0.1) inset; }
-            .ac-module {
-                background-color: rgba(6, 61, 68, 0.3);
-                margin-bottom: 8px;
-                padding: 10px;
-                border: 1px solid rgba(38, 218, 253, 0.3);
-                display: flex;
-                flex-direction: column;
-                transition: all 0.2s;
-            }
-            .ac-module:hover { border-color: #26dafd; }
-            .ac-module.enabled {
-                border: 1px solid #26dafd;
-                box-shadow: 0 0 10px rgba(38, 218, 253, 0.2) inset; 
-                background-color: rgba(38, 218, 253, 0.1);
-            }
-            .ac-setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; color: #a9fdff; }
-            .ac-input-number, .ac-input-text { 
-                background: rgba(0,0,0,0.5); 
-                border: 1px solid #1b90a8; 
-                color: #26dafd; 
-                padding: 2px; 
-                font-family: inherit;
-            }
-            .ac-checkbox { accent-color: #26dafd; }
-            .ac-preview-panel {
-                background-color: rgba(0,20,20,0.8);
-                border-left: 1px solid #26dafd;
-            }
-        `
-  };
-  const applyTheme = (themeName) => {
-    style.textContent = themes[themeName] || themes["Default"];
-    style.textContent += `
-            .ac-content { padding: 15px; flex: 1; overflow-y: auto; min-width: 0; }
-            .ac-body { display: flex; flex: 1; overflow: hidden; }
-            .ac-module-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
-            .ac-module-name { font-weight: bold; flex: 1; }
-            .ac-module-expand { 
-                padding: 5px 10px; 
-                font-size: 0.9em; 
-                color: #888; 
-                cursor: pointer; 
-                transition: transform 0.2s, color 0.2s;
-                user-select: none;
-                -webkit-tap-highlight-color: transparent;
-                min-width: 30px;
-                min-height: 30px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .ac-module-expand:hover { color: #fff; }
-            .ac-module-expand.open { transform: rotate(180deg); color: #b388ff; }
-            .ac-module-settings { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); display: none; }
-            .ac-module-settings.open { display: flex; flex-direction: column; gap: 8px; }
-            .ac-preview-panel { width: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; flex-shrink: 0; }
-            .ac-preview-title { margin-bottom: 10px; color: inherit; opacity: 0.7; font-size: 0.9em; }
-            .ac-content::-webkit-scrollbar { width: 8px; }
-            .ac-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
-            .ac-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
-        `;
-  };
-  applyTheme("Default");
-  if (!window.anticlient) window.anticlient = {};
-  window.anticlient.ui = { setTheme: applyTheme };
-  const windowEl = document.createElement("div");
-  windowEl.className = "ac-window";
-  uiRoot.appendChild(windowEl);
-  const header = document.createElement("div");
-  header.className = "ac-header";
-  header.innerHTML = '<span class="ac-title">ANTICLIENT</span> <span style="font-size: 0.8em; color: gray">v1.4</span>';
-  windowEl.appendChild(header);
-  const bodyEl = document.createElement("div");
-  bodyEl.className = "ac-body";
-  windowEl.appendChild(bodyEl);
-  const sidebar = document.createElement("div");
-  sidebar.className = "ac-sidebar";
-  bodyEl.appendChild(sidebar);
-  const contentContainer = document.createElement("div");
-  contentContainer.className = "ac-content";
-  bodyEl.appendChild(contentContainer);
-  const previewPanel = document.createElement("div");
-  previewPanel.className = "ac-preview-panel";
-  previewPanel.style.display = "none";
-  previewPanel.innerHTML = '<div class="ac-preview-title">VISUAL PREVIEW</div>';
-  const canvas = document.createElement("canvas");
-  canvas.width = 280;
-  canvas.height = 400;
-  canvas.style.display = "block";
-  previewPanel.appendChild(canvas);
-  bodyEl.appendChild(previewPanel);
-  document.body.appendChild(uiRoot);
-  const blockSelectorModal = document.createElement("div");
-  blockSelectorModal.id = "ac-block-selector-modal";
-  blockSelectorModal.style.display = "none";
-  blockSelectorModal.style.position = "fixed";
-  blockSelectorModal.style.top = "0";
-  blockSelectorModal.style.left = "0";
-  blockSelectorModal.style.width = "100%";
-  blockSelectorModal.style.height = "100%";
-  blockSelectorModal.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
-  blockSelectorModal.style.zIndex = "20000";
-  blockSelectorModal.style.display = "none";
-  blockSelectorModal.style.alignItems = "center";
-  blockSelectorModal.style.justifyContent = "center";
-  const blockSelectorContent = document.createElement("div");
-  blockSelectorContent.style.backgroundColor = "#0f0f13";
-  blockSelectorContent.style.border = "2px solid #7c4dff";
-  blockSelectorContent.style.borderRadius = "8px";
-  blockSelectorContent.style.padding = "20px";
-  blockSelectorContent.style.maxWidth = "600px";
-  blockSelectorContent.style.maxHeight = "80vh";
-  blockSelectorContent.style.width = "90%";
-  blockSelectorContent.style.display = "flex";
-  blockSelectorContent.style.flexDirection = "column";
-  blockSelectorContent.style.gap = "15px";
-  const blockSelectorTitle = document.createElement("div");
-  blockSelectorTitle.textContent = "Select Blocks";
-  blockSelectorTitle.style.fontSize = "1.2em";
-  blockSelectorTitle.style.fontWeight = "bold";
-  blockSelectorTitle.style.color = "#7c4dff";
-  blockSelectorTitle.style.textAlign = "center";
-  blockSelectorContent.appendChild(blockSelectorTitle);
-  const blockSearchInput = document.createElement("input");
-  blockSearchInput.type = "text";
-  blockSearchInput.placeholder = "Search blocks...";
-  blockSearchInput.style.padding = "8px";
-  blockSearchInput.style.backgroundColor = "#1a1a20";
-  blockSearchInput.style.color = "#e0e0e0";
-  blockSearchInput.style.border = "1px solid #444";
-  blockSearchInput.style.borderRadius = "4px";
-  blockSearchInput.style.fontSize = "0.9em";
-  blockSelectorContent.appendChild(blockSearchInput);
-  const blockListContainer = document.createElement("div");
-  blockListContainer.style.overflowY = "auto";
-  blockListContainer.style.maxHeight = "400px";
-  blockListContainer.style.display = "flex";
-  blockListContainer.style.flexDirection = "column";
-  blockListContainer.style.gap = "5px";
-  blockSelectorContent.appendChild(blockListContainer);
-  const blockSelectorButtons = document.createElement("div");
-  blockSelectorButtons.style.display = "flex";
-  blockSelectorButtons.style.gap = "10px";
-  blockSelectorButtons.style.justifyContent = "flex-end";
-  const blockSelectorClose = document.createElement("button");
-  blockSelectorClose.textContent = "Close";
-  blockSelectorClose.style.padding = "8px 16px";
-  blockSelectorClose.style.backgroundColor = "#333";
-  blockSelectorClose.style.color = "white";
-  blockSelectorClose.style.border = "none";
-  blockSelectorClose.style.borderRadius = "4px";
-  blockSelectorClose.style.cursor = "pointer";
-  blockSelectorClose.onclick = () => {
-    blockSelectorModal.style.display = "none";
-    renderModules();
-  };
-  blockSelectorButtons.appendChild(blockSelectorClose);
-  blockSelectorContent.appendChild(blockSelectorButtons);
-  blockSelectorModal.appendChild(blockSelectorContent);
-  document.body.appendChild(blockSelectorModal);
-  let currentBlockModule = null;
-  const openBlockSelector = (module) => {
-    currentBlockModule = module;
-    blockSelectorModal.style.display = "flex";
-    blockSearchInput.value = "";
-    renderBlockList();
-  };
-  const createBlockTextureCanvas = (blockName) => {
-    try {
-      const resourcesManager = window.resourcesManager || window.globalThis?.resourcesManager;
-      if (!resourcesManager?.currentResources?.blocksAtlasJson) {
-        return null;
-      }
-      const atlas = resourcesManager.currentResources.blocksAtlasJson;
-      const atlasImage = resourcesManager.currentResources.blocksAtlasImage;
-      if (!atlas || !atlasImage) return null;
-      const textureInfo = atlas.textures[blockName];
-      if (!textureInfo) return null;
-      const canvas2 = document.createElement("canvas");
-      const tileSize = atlas.tileSize || 16;
-      canvas2.width = tileSize;
-      canvas2.height = tileSize;
-      const ctx = canvas2.getContext("2d");
-      if (!ctx) return null;
-      const sx = textureInfo.u * atlasImage.width;
-      const sy = textureInfo.v * atlasImage.height;
-      const sw = (textureInfo.su || atlas.suSv) * atlasImage.width;
-      const sh = (textureInfo.sv || atlas.suSv) * atlasImage.height;
-      ctx.drawImage(atlasImage, sx, sy, sw, sh, 0, 0, tileSize, tileSize);
-      return canvas2;
-    } catch (err) {
-      console.debug("Failed to get texture for block:", blockName, err);
-      return null;
-    }
-  };
-  const renderBlockList = () => {
-    blockListContainer.innerHTML = "";
-    if (!window.bot || !window.bot.registry || !window.bot.registry.blocksByName) {
-      const errorMsg = document.createElement("div");
-      errorMsg.textContent = "Please connect to a server first to load block data.";
-      errorMsg.style.color = "#ff5555";
-      errorMsg.style.textAlign = "center";
-      errorMsg.style.padding = "20px";
-      blockListContainer.appendChild(errorMsg);
-      return;
-    }
-    const searchTerm = blockSearchInput.value.toLowerCase();
-    const blockNames = Object.keys(window.bot.registry.blocksByName).filter((name) => name.includes(searchTerm)).sort();
-    if (blockNames.length === 0) {
-      const emptyMsg = document.createElement("div");
-      emptyMsg.textContent = "No blocks found.";
-      emptyMsg.style.color = "#777";
-      emptyMsg.style.textAlign = "center";
-      emptyMsg.style.padding = "20px";
-      blockListContainer.appendChild(emptyMsg);
-      return;
-    }
-    blockNames.forEach((blockName) => {
-      const blockItem = document.createElement("div");
-      blockItem.style.padding = "8px 12px";
-      blockItem.style.backgroundColor = "#1a1a20";
-      blockItem.style.borderRadius = "4px";
-      blockItem.style.cursor = "pointer";
-      blockItem.style.display = "flex";
-      blockItem.style.alignItems = "center";
-      blockItem.style.gap = "10px";
-      blockItem.style.transition = "background-color 0.2s";
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = currentBlockModule && currentBlockModule.settings.blocks.includes(blockName);
-      checkbox.style.cursor = "pointer";
-      checkbox.onclick = (e) => {
-        e.stopPropagation();
-        toggleBlock(blockName, checkbox.checked);
-      };
-      const contentContainer2 = document.createElement("div");
-      contentContainer2.style.display = "flex";
-      contentContainer2.style.alignItems = "center";
-      contentContainer2.style.gap = "10px";
-      contentContainer2.style.flex = "1";
-      const textureCanvas = createBlockTextureCanvas(blockName);
-      if (textureCanvas) {
-        textureCanvas.style.width = "32px";
-        textureCanvas.style.height = "32px";
-        textureCanvas.style.imageRendering = "pixelated";
-        contentContainer2.appendChild(textureCanvas);
-      }
-      const label = document.createElement("span");
-      label.textContent = blockName;
-      label.style.color = "#e0e0e0";
-      label.style.flex = "1";
-      contentContainer2.appendChild(label);
-      blockItem.onclick = () => {
-        checkbox.checked = !checkbox.checked;
-        toggleBlock(blockName, checkbox.checked);
-      };
-      blockItem.onmouseenter = () => {
-        blockItem.style.backgroundColor = "#252530";
-      };
-      blockItem.onmouseleave = () => {
-        blockItem.style.backgroundColor = "#1a1a20";
-      };
-      blockItem.appendChild(checkbox);
-      blockItem.appendChild(contentContainer2);
-      blockListContainer.appendChild(blockItem);
-    });
-  };
-  const toggleBlock = (blockName, isChecked) => {
-    if (!currentBlockModule) return;
-    if (isChecked) {
-      if (!currentBlockModule.settings.blocks.includes(blockName)) {
-        currentBlockModule.settings.blocks.push(blockName);
-      }
-    } else {
-      const index = currentBlockModule.settings.blocks.indexOf(blockName);
-      if (index > -1) {
-        currentBlockModule.settings.blocks.splice(index, 1);
-      }
-    }
-  };
-  blockSearchInput.oninput = () => {
-    renderBlockList();
-  };
-  let activeTab = "Movement";
-  let previewScene = null;
-  let previewCamera = null;
-  let previewRenderer = null;
-  let previewPlayerWrapper = null;
-  let previewPlayerObject = null;
-  let previewESPBox = null;
-  let previewStorageBox = null;
-  let previewAnimationId = null;
-  const init3DPreview = () => {
-    if (!window.THREE) {
-      console.warn("[Anticlient] THREE.js not available, falling back to 2D preview");
-      return false;
-    }
-    try {
-      const THREE = window.THREE;
-      previewScene = new THREE.Scene();
-      previewScene.background = new THREE.Color(986899);
-      previewCamera = new THREE.PerspectiveCamera(50, canvas.width / canvas.height, 0.1, 100);
-      previewCamera.position.set(0, 1.5, 3.5);
-      previewCamera.lookAt(0, 1, 0);
-      previewRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-      previewRenderer.setSize(canvas.width, canvas.height);
-      previewRenderer.setPixelRatio(window.devicePixelRatio);
-      const ambientLight = new THREE.AmbientLight(16777215, 0.6);
-      previewScene.add(ambientLight);
-      const directionalLight = new THREE.DirectionalLight(16777215, 0.8);
-      directionalLight.position.set(5, 10, 5);
-      previewScene.add(directionalLight);
-      if (window.skinview3d?.PlayerObject) {
-        const PlayerObject = window.skinview3d.PlayerObject;
-        previewPlayerObject = new PlayerObject();
-        previewPlayerObject.position.set(0, 16, 0);
-        previewPlayerWrapper = new THREE.Group();
-        previewPlayerWrapper.add(previewPlayerObject);
-        const scale = 1 / 16;
-        previewPlayerWrapper.scale.set(scale, scale, scale);
-        previewPlayerWrapper.rotation.set(0, Math.PI, 0);
-        previewPlayerWrapper.position.set(0, 0, 0);
-        previewScene.add(previewPlayerWrapper);
-      } else {
-        const geometry = new THREE.BoxGeometry(0.6, 1.8, 0.6);
-        const material = new THREE.MeshStandardMaterial({ color: 8947848 });
-        const playerMesh = new THREE.Mesh(geometry, material);
-        playerMesh.position.set(0, 0.9, 0);
-        previewScene.add(playerMesh);
-        previewPlayerWrapper = playerMesh;
-      }
-      const espGeometry = new THREE.BoxGeometry(0.6, 1.8, 0.6);
-      const espEdges = new THREE.EdgesGeometry(espGeometry);
-      const espMaterial = new THREE.LineBasicMaterial({ color: 65535, linewidth: 2 });
-      previewESPBox = new THREE.LineSegments(espEdges, espMaterial);
-      previewESPBox.position.set(0, 0.9, 0);
-      previewESPBox.visible = false;
-      previewScene.add(previewESPBox);
-      const storageGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-      const storageEdges = new THREE.EdgesGeometry(storageGeometry);
-      const storageMaterial = new THREE.LineBasicMaterial({ color: 16753920, linewidth: 2 });
-      previewStorageBox = new THREE.LineSegments(storageEdges, storageMaterial);
-      previewStorageBox.position.set(1.2, 0.15, 0);
-      previewStorageBox.visible = false;
-      previewScene.add(previewStorageBox);
-      return true;
-    } catch (err) {
-      console.error("[Anticlient] Failed to initialize 3D preview:", err);
-      return false;
-    }
-  };
-  const render3DPreview = () => {
-    if (!previewRenderer || !previewScene || !previewCamera) return;
-    if (activeTab !== "Render") return;
-    const esp = modules["esp"];
-    if (esp && previewESPBox) {
-      previewESPBox.visible = esp.enabled;
-      if (esp.enabled) {
-        const color = esp.settings.playerColor || "#00ffff";
-        previewESPBox.material.color.setStyle(color);
-      }
-    }
-    const storageEsp = modules["storageesp"];
-    if (storageEsp && previewStorageBox) {
-      previewStorageBox.visible = storageEsp.enabled;
-      if (storageEsp.enabled) {
-        const color = storageEsp.settings.color || "#FFA500";
-        previewStorageBox.material.color.setStyle(color);
-      }
-    }
-    if (previewPlayerWrapper) {
-      previewPlayerWrapper.rotation.y += 0.01;
-    }
-    previewRenderer.render(previewScene, previewCamera);
-  };
-  const start3DPreview = () => {
-    if (!previewRenderer) {
-      if (!init3DPreview()) return;
-    }
-    const animate = () => {
-      if (activeTab !== "Render") {
-        previewAnimationId = null;
-        return;
-      }
-      render3DPreview();
-      previewAnimationId = requestAnimationFrame(animate);
-    };
-    animate();
-  };
-  const stop3DPreview = () => {
-    if (previewAnimationId) {
-      cancelAnimationFrame(previewAnimationId);
-      previewAnimationId = null;
-    }
-  };
-  let previewInterval = null;
-  const updateLayout = () => {
-    if (activeTab === "Render") {
-      windowEl.classList.add("expanded");
-      previewPanel.style.display = "flex";
-      start3DPreview();
-    } else {
-      windowEl.classList.remove("expanded");
-      previewPanel.style.display = "none";
-      stop3DPreview();
-    }
-  };
-  const renderModules = () => {
-    contentContainer.innerHTML = "";
-    if (activeTab === "Packets") {
-      renderPackets();
-      return;
-    }
-    if (activeTab === "Scripting") {
-      renderScripting();
-      return;
-    }
-    const catMods = categories[activeTab] || [];
-    if (!catMods.length) {
-      const emptyMsg = document.createElement("div");
-      emptyMsg.textContent = "No modules in this category.";
-      emptyMsg.style.color = "#555";
-      emptyMsg.style.textAlign = "center";
-      emptyMsg.style.marginTop = "20px";
-      contentContainer.appendChild(emptyMsg);
-      return;
-    }
-    catMods.forEach((mod) => {
-      const modEl = document.createElement("div");
-      modEl.className = "ac-module" + (mod.enabled ? " enabled" : "");
-      mod.uiElement = modEl;
-      const header2 = document.createElement("div");
-      header2.className = "ac-module-header";
-      const moduleName = document.createElement("span");
-      moduleName.className = "ac-module-name";
-      moduleName.textContent = mod.name;
-      moduleName.onclick = (e) => {
-        e.stopPropagation();
-        mod.toggle();
-      };
-      moduleName.ontouchend = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        mod.toggle();
-      };
-      header2.appendChild(moduleName);
-      const expandBtn = document.createElement("span");
-      expandBtn.className = "ac-module-expand";
-      expandBtn.innerHTML = "\u25BC";
-      expandBtn.onclick = (e) => {
-        e.stopPropagation();
-        const settingsEl = modEl.querySelector(".ac-module-settings");
-        settingsEl.classList.toggle("open");
-        expandBtn.classList.toggle("open");
-      };
-      expandBtn.ontouchend = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const settingsEl = modEl.querySelector(".ac-module-settings");
-        settingsEl.classList.toggle("open");
-        expandBtn.classList.toggle("open");
-      };
-      header2.appendChild(expandBtn);
-      header2.oncontextmenu = (e) => {
-        e.preventDefault();
-        const settingsEl = modEl.querySelector(".ac-module-settings");
-        settingsEl.classList.toggle("open");
-        expandBtn.classList.toggle("open");
-      };
-      modEl.appendChild(header2);
-      const settingsDiv = document.createElement("div");
-      settingsDiv.className = "ac-module-settings";
-      Object.keys(mod.settings).forEach((key) => {
-        const val = mod.settings[key];
-        if (key === "enabled") {
-          return;
-        }
-        if (key === "blocks" && Array.isArray(val)) {
-          return;
-        }
-        const row = document.createElement("div");
-        row.className = "ac-setting-row";
-        const label = document.createElement("span");
-        label.textContent = key;
-        row.appendChild(label);
-        const metadata = mod.settingsMetadata?.[key];
-        if (key === "logLevel" && mod.id === "loggersettings") {
-          const select = document.createElement("select");
-          select.style.background = "#1a1a20";
-          select.style.color = "white";
-          select.style.border = "1px solid #444";
-          select.style.padding = "4px";
-          select.style.borderRadius = "4px";
-          select.style.cursor = "pointer";
-          const levels = [
-            { value: 0, label: "Debug" },
-            { value: 1, label: "Info" },
-            { value: 2, label: "Warning" },
-            { value: 3, label: "Error" },
-            { value: 4, label: "None" }
-          ];
-          levels.forEach((level) => {
-            const option = document.createElement("option");
-            option.value = level.value;
-            option.textContent = level.label;
-            option.selected = val === level.value;
-            select.appendChild(option);
-          });
-          select.onchange = (e) => {
-            mod.settings[key] = parseInt(e.target.value);
-          };
-          row.appendChild(select);
-        } else if (metadata?.type === "dropdown" && metadata.options) {
-          const select = document.createElement("select");
-          select.style.background = "#1a1a20";
-          select.style.color = "white";
-          select.style.border = "1px solid #444";
-          select.style.padding = "4px";
-          select.style.borderRadius = "4px";
-          select.style.cursor = "pointer";
-          metadata.options.forEach((option) => {
-            const optionEl = document.createElement("option");
-            optionEl.value = option;
-            optionEl.textContent = option;
-            optionEl.selected = val === option;
-            select.appendChild(optionEl);
-          });
-          select.onchange = (e) => {
-            mod.settings[key] = e.target.value;
-          };
-          row.appendChild(select);
-        } else if (typeof val === "number") {
-          const input = document.createElement("input");
-          input.type = "number";
-          input.className = "ac-input-number";
-          input.value = val;
-          input.step = 0.1;
-          input.onchange = (e) => mod.settings[key] = parseFloat(e.target.value);
-          row.appendChild(input);
-        } else if (typeof val === "boolean") {
-          const input = document.createElement("input");
-          input.type = "checkbox";
-          input.className = "ac-checkbox";
-          input.checked = val;
-          input.onchange = (e) => mod.settings[key] = e.target.checked;
-          row.appendChild(input);
-        } else if (typeof val === "string" && val.startsWith("#")) {
-          const input = document.createElement("input");
-          input.type = "color";
-          input.style.background = "none";
-          input.style.border = "none";
-          input.style.width = "30px";
-          input.style.height = "30px";
-          input.value = val;
-          input.onchange = (e) => mod.settings[key] = e.target.value;
-          row.appendChild(input);
-        } else {
-          const input = document.createElement("input");
-          input.value = val;
-          input.style.background = "black";
-          input.style.color = "white";
-          input.style.border = "1px solid #444";
-          input.onchange = (e) => mod.settings[key] = e.target.value;
-          row.appendChild(input);
-        }
-        settingsDiv.appendChild(row);
-      });
-      if (mod.settings.blocks && Array.isArray(mod.settings.blocks)) {
-        const blocksRow = document.createElement("div");
-        blocksRow.className = "ac-setting-row";
-        const blocksLabel = document.createElement("span");
-        blocksLabel.textContent = "blocks";
-        blocksRow.appendChild(blocksLabel);
-        const configBtn = document.createElement("button");
-        configBtn.textContent = `Config Blocks (${mod.settings.blocks.length})`;
-        configBtn.style.background = "#7c4dff";
-        configBtn.style.color = "white";
-        configBtn.style.border = "none";
-        configBtn.style.cursor = "pointer";
-        configBtn.style.padding = "4px 12px";
-        configBtn.style.borderRadius = "4px";
-        configBtn.style.fontSize = "0.85em";
-        configBtn.onclick = () => {
-          openBlockSelector(mod);
-        };
-        blocksRow.appendChild(configBtn);
-        settingsDiv.appendChild(blocksRow);
-      }
-      if (mod.id === "client_settings") {
-        if (mod.actions && mod.actions.update) {
-          const updateRow = document.createElement("div");
-          updateRow.className = "ac-setting-row";
-          const updateLabel = document.createElement("span");
-          updateLabel.textContent = "Update";
-          updateRow.appendChild(updateLabel);
-          const updateBtn = document.createElement("button");
-          updateBtn.style.background = "#333";
-          updateBtn.style.color = "white";
-          updateBtn.style.border = "1px solid #444";
-          updateBtn.style.cursor = "pointer";
-          updateBtn.style.padding = "4px 12px";
-          updateBtn.textContent = "Update";
-          updateBtn.onclick = async () => {
-            updateBtn.disabled = true;
-            updateBtn.textContent = "Updating...";
-            try {
-              await mod.actions.update();
-            } catch (error) {
-              console.error("Update failed:", error);
-            } finally {
-              updateBtn.disabled = false;
-              updateBtn.textContent = "Update";
-            }
-          };
-          updateRow.appendChild(updateBtn);
-          settingsDiv.appendChild(updateRow);
-        }
-        if (mod.actions && mod.actions.unload) {
-          const unloadRow = document.createElement("div");
-          unloadRow.className = "ac-setting-row";
-          const unloadLabel = document.createElement("span");
-          unloadLabel.textContent = "Unload";
-          unloadRow.appendChild(unloadLabel);
-          const unloadBtn = document.createElement("button");
-          unloadBtn.style.background = "#333";
-          unloadBtn.style.color = "white";
-          unloadBtn.style.border = "1px solid #444";
-          unloadBtn.style.cursor = "pointer";
-          unloadBtn.style.padding = "4px 12px";
-          unloadBtn.textContent = "Unload";
-          unloadBtn.onclick = async () => {
-            unloadBtn.disabled = true;
-            unloadBtn.textContent = "Unloading...";
-            try {
-              await mod.actions.unload();
-            } catch (error) {
-              console.error("Unload failed:", error);
-              unloadBtn.disabled = false;
-              unloadBtn.textContent = "Unload";
-            }
-          };
-          unloadRow.appendChild(unloadBtn);
-          settingsDiv.appendChild(unloadRow);
-        }
-      } else {
-        const bindRow = document.createElement("div");
-        bindRow.className = "ac-setting-row";
-        const bindLabel = document.createElement("span");
-        bindLabel.textContent = "Bind";
-        bindRow.appendChild(bindLabel);
-        const bindBtn = document.createElement("button");
-        bindBtn.style.background = "#333";
-        bindBtn.style.color = "white";
-        bindBtn.style.border = "1px solid #444";
-        bindBtn.style.cursor = "pointer";
-        bindBtn.textContent = mod.bind || "None";
-        bindBtn.onclick = () => {
-          bindBtn.textContent = "Press Key...";
-          const handler = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.code === "Escape") {
-              mod.bind = null;
-              bindBtn.textContent = "None";
-            } else {
-              mod.bind = e.code;
-              bindBtn.textContent = e.code;
-            }
-            window.removeEventListener("keydown", handler, { capture: true });
-          };
-          window.addEventListener("keydown", handler, { capture: true });
-        };
-        bindRow.appendChild(bindBtn);
-        settingsDiv.appendChild(bindRow);
-      }
-      modEl.appendChild(settingsDiv);
-      contentContainer.appendChild(modEl);
-    });
-  };
-  const renderScripting = () => {
-    contentContainer.style.padding = "15px";
-    const title = document.createElement("div");
-    title.textContent = "Scripting & Custom Packets";
-    title.style.fontSize = "1.2em";
-    title.style.fontWeight = "bold";
-    title.style.color = "#b388ff";
-    title.style.marginBottom = "15px";
-    contentContainer.appendChild(title);
-    const tabsContainer = document.createElement("div");
-    tabsContainer.style.display = "flex";
-    tabsContainer.style.gap = "10px";
-    tabsContainer.style.marginBottom = "15px";
-    tabsContainer.style.borderBottom = "1px solid #333";
-    let activeScriptTab = "editor";
-    const editorTab = document.createElement("div");
-    editorTab.textContent = "Script Editor";
-    editorTab.style.padding = "8px 16px";
-    editorTab.style.cursor = "pointer";
-    editorTab.style.borderBottom = "2px solid #b388ff";
-    editorTab.style.color = "#b388ff";
-    const packetTab = document.createElement("div");
-    packetTab.textContent = "Packet Sender";
-    packetTab.style.padding = "8px 16px";
-    packetTab.style.cursor = "pointer";
-    packetTab.style.borderBottom = "2px solid transparent";
-    packetTab.style.color = "#777";
-    const switchTab = (tab) => {
-      activeScriptTab = tab;
-      if (tab === "editor") {
-        editorTab.style.borderBottom = "2px solid #b388ff";
-        editorTab.style.color = "#b388ff";
-        packetTab.style.borderBottom = "2px solid transparent";
-        packetTab.style.color = "#777";
-        editorSection.style.display = "block";
-        packetSection.style.display = "none";
-      } else {
-        editorTab.style.borderBottom = "2px solid transparent";
-        editorTab.style.color = "#777";
-        packetTab.style.borderBottom = "2px solid #b388ff";
-        packetTab.style.color = "#b388ff";
-        editorSection.style.display = "none";
-        packetSection.style.display = "block";
-      }
-    };
-    editorTab.onclick = () => switchTab("editor");
-    packetTab.onclick = () => switchTab("packet");
-    tabsContainer.appendChild(editorTab);
-    tabsContainer.appendChild(packetTab);
-    contentContainer.appendChild(tabsContainer);
-    const editorSection = document.createElement("div");
-    const editorLabel = document.createElement("div");
-    editorLabel.textContent = "JavaScript Code (has access to window.bot):";
-    editorLabel.style.color = "#e0e0e0";
-    editorLabel.style.marginBottom = "8px";
-    editorSection.appendChild(editorLabel);
-    const codeEditor = document.createElement("textarea");
-    codeEditor.style.width = "100%";
-    codeEditor.style.height = "250px";
-    codeEditor.style.background = "#000";
-    codeEditor.style.color = "#0f0";
-    codeEditor.style.border = "1px solid #444";
-    codeEditor.style.padding = "10px";
-    codeEditor.style.fontFamily = "'Consolas', 'Monaco', monospace";
-    codeEditor.style.fontSize = "12px";
-    codeEditor.style.resize = "vertical";
-    codeEditor.style.borderRadius = "4px";
-    codeEditor.placeholder = '// Example:\n// bot.chat("Hello from script!")\n// console.log(bot.entity.position)';
-    codeEditor.value = localStorage.getItem("anticlient_script") || "";
-    codeEditor.oninput = () => {
-      localStorage.setItem("anticlient_script", codeEditor.value);
-    };
-    editorSection.appendChild(codeEditor);
-    const editorButtons = document.createElement("div");
-    editorButtons.style.display = "flex";
-    editorButtons.style.gap = "10px";
-    editorButtons.style.marginTop = "10px";
-    const runBtn = document.createElement("button");
-    runBtn.textContent = "Run Script";
-    runBtn.style.padding = "8px 16px";
-    runBtn.style.background = "#2e7d32";
-    runBtn.style.color = "white";
-    runBtn.style.border = "none";
-    runBtn.style.cursor = "pointer";
-    runBtn.style.borderRadius = "4px";
-    runBtn.style.fontWeight = "bold";
-    runBtn.onclick = () => {
-      try {
-        const fn = new Function("bot", "window", codeEditor.value);
-        const result = fn(window.bot, window);
-        console.log("Script result:", result);
-        alert("Script executed successfully! Check console for output.");
-      } catch (err) {
-        console.error("Script error:", err);
-        alert("Script error: " + err.message);
-      }
-    };
-    editorButtons.appendChild(runBtn);
-    const clearBtn = document.createElement("button");
-    clearBtn.textContent = "Clear";
-    clearBtn.style.padding = "8px 16px";
-    clearBtn.style.background = "#333";
-    clearBtn.style.color = "white";
-    clearBtn.style.border = "none";
-    clearBtn.style.cursor = "pointer";
-    clearBtn.style.borderRadius = "4px";
-    clearBtn.onclick = () => {
-      codeEditor.value = "";
-      localStorage.removeItem("anticlient_script");
-    };
-    editorButtons.appendChild(clearBtn);
-    const apiBtn = document.createElement("button");
-    apiBtn.textContent = "API Docs";
-    apiBtn.style.padding = "8px 16px";
-    apiBtn.style.background = "#1976d2";
-    apiBtn.style.color = "white";
-    apiBtn.style.border = "none";
-    apiBtn.style.cursor = "pointer";
-    apiBtn.style.borderRadius = "4px";
-    apiBtn.onclick = () => {
-      window.open("https://github.com/PrismarineJS/mineflayer/blob/master/docs/api.md", "_blank");
-    };
-    editorButtons.appendChild(apiBtn);
-    editorSection.appendChild(editorButtons);
-    contentContainer.appendChild(editorSection);
-    const packetSection = document.createElement("div");
-    packetSection.style.display = "none";
-    const packetLabel = document.createElement("div");
-    packetLabel.textContent = "Packet Name:";
-    packetLabel.style.color = "#e0e0e0";
-    packetLabel.style.marginBottom = "8px";
-    packetSection.appendChild(packetLabel);
-    const packetNameInput = document.createElement("input");
-    packetNameInput.type = "text";
-    packetNameInput.placeholder = "e.g., chat, position, arm_animation";
-    packetNameInput.style.width = "100%";
-    packetNameInput.style.background = "#000";
-    packetNameInput.style.color = "white";
-    packetNameInput.style.border = "1px solid #444";
-    packetNameInput.style.padding = "8px";
-    packetNameInput.style.borderRadius = "4px";
-    packetNameInput.style.marginBottom = "15px";
-    packetNameInput.style.fontFamily = "'Consolas', 'Monaco', monospace";
-    packetSection.appendChild(packetNameInput);
-    const dataLabel = document.createElement("div");
-    dataLabel.textContent = "Packet Data (JSON):";
-    dataLabel.style.color = "#e0e0e0";
-    dataLabel.style.marginBottom = "8px";
-    packetSection.appendChild(dataLabel);
-    const packetDataInput = document.createElement("textarea");
-    packetDataInput.style.width = "100%";
-    packetDataInput.style.height = "200px";
-    packetDataInput.style.background = "#000";
-    packetDataInput.style.color = "#0f0";
-    packetDataInput.style.border = "1px solid #444";
-    packetDataInput.style.padding = "10px";
-    packetDataInput.style.fontFamily = "'Consolas', 'Monaco', monospace";
-    packetDataInput.style.fontSize = "12px";
-    packetDataInput.style.resize = "vertical";
-    packetDataInput.style.borderRadius = "4px";
-    packetDataInput.placeholder = '{\n  "message": "Hello World"\n}';
-    packetDataInput.value = localStorage.getItem("anticlient_packet_data") || "";
-    packetDataInput.oninput = () => {
-      localStorage.setItem("anticlient_packet_data", packetDataInput.value);
-    };
-    packetSection.appendChild(packetDataInput);
-    const packetButtons = document.createElement("div");
-    packetButtons.style.display = "flex";
-    packetButtons.style.gap = "10px";
-    packetButtons.style.marginTop = "10px";
-    const sendBtn = document.createElement("button");
-    sendBtn.textContent = "Send Packet";
-    sendBtn.style.padding = "8px 16px";
-    sendBtn.style.background = "#1976d2";
-    sendBtn.style.color = "white";
-    sendBtn.style.border = "none";
-    sendBtn.style.cursor = "pointer";
-    sendBtn.style.borderRadius = "4px";
-    sendBtn.style.fontWeight = "bold";
-    sendBtn.onclick = () => {
-      if (!window.bot || !window.bot._client) {
-        alert("Bot not connected!");
-        return;
-      }
-      const packetName = packetNameInput.value.trim();
-      if (!packetName) {
-        alert("Please enter a packet name!");
-        return;
-      }
-      try {
-        const packetData = packetDataInput.value.trim() ? JSON.parse(packetDataInput.value) : {};
-        window.bot._client.write(packetName, packetData);
-        console.log("Sent packet:", packetName, packetData);
-        alert("Packet sent successfully!");
-      } catch (err) {
-        console.error("Packet send error:", err);
-        alert("Error: " + err.message);
-      }
-    };
-    packetButtons.appendChild(sendBtn);
-    const clearPacketBtn = document.createElement("button");
-    clearPacketBtn.textContent = "Clear";
-    clearPacketBtn.style.padding = "8px 16px";
-    clearPacketBtn.style.background = "#333";
-    clearPacketBtn.style.color = "white";
-    clearPacketBtn.style.border = "none";
-    clearPacketBtn.style.cursor = "pointer";
-    clearPacketBtn.style.borderRadius = "4px";
-    clearPacketBtn.onclick = () => {
-      packetNameInput.value = "";
-      packetDataInput.value = "";
-      localStorage.removeItem("anticlient_packet_data");
-    };
-    packetButtons.appendChild(clearPacketBtn);
-    const templatesBtn = document.createElement("button");
-    templatesBtn.textContent = "Templates";
-    templatesBtn.style.padding = "8px 16px";
-    templatesBtn.style.background = "#7c4dff";
-    templatesBtn.style.color = "white";
-    templatesBtn.style.border = "none";
-    templatesBtn.style.cursor = "pointer";
-    templatesBtn.style.borderRadius = "4px";
-    templatesBtn.onclick = () => {
-      const templates = {
-        "chat": '{\n  "message": "Hello World"\n}',
-        "position": '{\n  "x": 0,\n  "y": 64,\n  "z": 0,\n  "onGround": true\n}',
-        "arm_animation": "{}",
-        "entity_action": '{\n  "entityId": 0,\n  "actionId": 0,\n  "jumpBoost": 0\n}'
-      };
-      const templateName = prompt("Choose template:\n- chat\n- position\n- arm_animation\n- entity_action");
-      if (templateName && templates[templateName]) {
-        packetNameInput.value = templateName;
-        packetDataInput.value = templates[templateName];
-      }
-    };
-    packetButtons.appendChild(templatesBtn);
-    packetSection.appendChild(packetButtons);
-    contentContainer.appendChild(packetSection);
-  };
-  const renderPackets = () => {
-    contentContainer.innerHTML = "";
-    const fakeLag = modules["fakelag"];
-    if (fakeLag) {
-      const fakeLagSection = document.createElement("div");
-      fakeLagSection.style.marginBottom = "15px";
-      fakeLagSection.style.padding = "12px";
-      fakeLagSection.style.backgroundColor = "#1a1a20";
-      fakeLagSection.style.borderRadius = "6px";
-      fakeLagSection.style.border = "1px solid #333";
-      let isCollapsed = localStorage.getItem("fakeLagCollapsed") === "true";
-      const fakeLagHeader = document.createElement("div");
-      fakeLagHeader.style.display = "flex";
-      fakeLagHeader.style.justifyContent = "space-between";
-      fakeLagHeader.style.alignItems = "center";
-      fakeLagHeader.style.marginBottom = "10px";
-      fakeLagHeader.style.cursor = "pointer";
-      fakeLagHeader.style.userSelect = "none";
-      const titleContainer = document.createElement("div");
-      titleContainer.style.display = "flex";
-      titleContainer.style.alignItems = "center";
-      titleContainer.style.gap = "8px";
-      const collapseIcon = document.createElement("span");
-      collapseIcon.textContent = isCollapsed ? "\u25B6" : "\u25BC";
-      collapseIcon.style.color = "#888";
-      collapseIcon.style.fontSize = "12px";
-      collapseIcon.style.transition = "transform 0.2s";
-      titleContainer.appendChild(collapseIcon);
-      const fakeLagTitle = document.createElement("h3");
-      fakeLagTitle.textContent = "\u{1F310} Fake Lag / Packet Delay";
-      fakeLagTitle.style.margin = "0";
-      fakeLagTitle.style.color = "#00ffff";
-      fakeLagTitle.style.fontSize = "16px";
-      titleContainer.appendChild(fakeLagTitle);
-      fakeLagHeader.appendChild(titleContainer);
-      const fakeLagToggle = document.createElement("button");
-      fakeLagToggle.textContent = fakeLag.enabled ? "Disable" : "Enable";
-      fakeLagToggle.style.padding = "6px 16px";
-      fakeLagToggle.style.background = fakeLag.enabled ? "#d32f2f" : "#2e7d32";
-      fakeLagToggle.style.color = "white";
-      fakeLagToggle.style.border = "none";
-      fakeLagToggle.style.cursor = "pointer";
-      fakeLagToggle.style.borderRadius = "4px";
-      fakeLagToggle.style.fontWeight = "bold";
-      fakeLagToggle.onclick = () => {
-        fakeLag.toggle();
-        fakeLagToggle.textContent = fakeLag.enabled ? "Disable" : "Enable";
-        fakeLagToggle.style.background = fakeLag.enabled ? "#d32f2f" : "#2e7d32";
-      };
-      fakeLagHeader.appendChild(fakeLagToggle);
-      fakeLagSection.appendChild(fakeLagHeader);
-      const contentDiv = document.createElement("div");
-      contentDiv.style.overflow = "hidden";
-      contentDiv.style.transition = "max-height 0.3s ease-out, opacity 0.3s ease-out";
-      contentDiv.style.opacity = isCollapsed ? "0" : "1";
-      contentDiv.style.maxHeight = isCollapsed ? "0px" : "1000px";
-      fakeLagHeader.onclick = (e) => {
-        if (e.target === fakeLagToggle) return;
-        isCollapsed = !isCollapsed;
-        localStorage.setItem("fakeLagCollapsed", isCollapsed);
-        collapseIcon.textContent = isCollapsed ? "\u25B6" : "\u25BC";
-        contentDiv.style.maxHeight = isCollapsed ? "0px" : "1000px";
-        contentDiv.style.opacity = isCollapsed ? "0" : "1";
-      };
-      const settingsGrid = document.createElement("div");
-      settingsGrid.style.display = "grid";
-      settingsGrid.style.gridTemplateColumns = "1fr 1fr";
-      settingsGrid.style.gap = "10px";
-      const createSetting = (label, type, key, options = {}) => {
-        const row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.flexDirection = "column";
-        row.style.gap = "4px";
-        const labelEl = document.createElement("label");
-        labelEl.textContent = label;
-        labelEl.style.color = "#aaa";
-        labelEl.style.fontSize = "12px";
-        row.appendChild(labelEl);
-        if (type === "number") {
-          const input = document.createElement("input");
-          input.type = "number";
-          input.value = fakeLag.settings[key];
-          input.min = options.min || 0;
-          input.max = options.max || 1e4;
-          input.style.background = "#000";
-          input.style.color = "white";
-          input.style.border = "1px solid #444";
-          input.style.padding = "6px";
-          input.style.borderRadius = "4px";
-          input.oninput = (e) => {
-            fakeLag.settings[key] = parseInt(e.target.value) || 0;
-          };
-          row.appendChild(input);
-        } else if (type === "checkbox") {
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.checked = fakeLag.settings[key];
-          checkbox.style.width = "20px";
-          checkbox.style.height = "20px";
-          checkbox.style.cursor = "pointer";
-          checkbox.onchange = (e) => {
-            fakeLag.settings[key] = e.target.checked;
-          };
-          row.appendChild(checkbox);
-        } else if (type === "text") {
-          const input = document.createElement("input");
-          input.type = "text";
-          input.value = fakeLag.settings[key];
-          input.placeholder = options.placeholder || "";
-          input.style.background = "#000";
-          input.style.color = "white";
-          input.style.border = "1px solid #444";
-          input.style.padding = "6px";
-          input.style.borderRadius = "4px";
-          input.oninput = (e) => {
-            fakeLag.settings[key] = e.target.value;
-          };
-          row.appendChild(input);
-        }
-        return row;
-      };
-      settingsGrid.appendChild(createSetting("Outgoing Delay (ms)", "number", "outgoingDelay", { max: 5e3 }));
-      settingsGrid.appendChild(createSetting("Incoming Delay (ms)", "number", "incomingDelay", { max: 5e3 }));
-      settingsGrid.appendChild(createSetting("Delay Outgoing", "checkbox", "delayOutgoing"));
-      settingsGrid.appendChild(createSetting("Delay Incoming", "checkbox", "delayIncoming"));
-      settingsGrid.appendChild(createSetting("Random Jitter (ms)", "number", "randomJitter", { max: 500 }));
-      settingsGrid.appendChild(createSetting("Burst Interval (ms)", "number", "burstInterval", { max: 1e4 }));
-      settingsGrid.appendChild(createSetting("Burst Mode", "checkbox", "burstMode"));
-      settingsGrid.appendChild(createSetting("Show on HUD", "checkbox", "onHUD"));
-      const filterRow = createSetting("Packet Filter (comma separated)", "text", "packetFilter", { placeholder: "position,look,chat" });
-      filterRow.style.gridColumn = "1 / -1";
-      settingsGrid.appendChild(filterRow);
-      contentDiv.appendChild(settingsGrid);
-      if (fakeLag.settings.burstMode && fakeLag.enabled) {
-        const burstStatus = document.createElement("div");
-        burstStatus.id = "burst-status";
-        burstStatus.style.marginTop = "12px";
-        burstStatus.style.padding = "10px";
-        burstStatus.style.backgroundColor = "#0a0a0f";
-        burstStatus.style.borderRadius = "4px";
-        burstStatus.style.border = "1px solid #444";
-        burstStatus.style.display = "grid";
-        burstStatus.style.gridTemplateColumns = "1fr 1fr";
-        burstStatus.style.gap = "8px";
-        burstStatus.style.fontSize = "13px";
-        const createStatusItem = (label, value, color = "#00ff00") => {
-          const item = document.createElement("div");
-          item.style.display = "flex";
-          item.style.flexDirection = "column";
-          item.style.gap = "2px";
-          const labelEl = document.createElement("span");
-          labelEl.textContent = label;
-          labelEl.style.color = "#888";
-          labelEl.style.fontSize = "11px";
-          item.appendChild(labelEl);
-          const valueEl = document.createElement("span");
-          valueEl.textContent = value;
-          valueEl.style.color = color;
-          valueEl.style.fontWeight = "bold";
-          valueEl.style.fontSize = "16px";
-          valueEl.className = "burst-value";
-          item.appendChild(valueEl);
-          return item;
-        };
-        burstStatus.appendChild(createStatusItem("Next Burst In", "0ms", "#ffaa00"));
-        burstStatus.appendChild(createStatusItem("Queue Size", "0", "#00ffff"));
-        burstStatus.appendChild(createStatusItem("Outgoing Queue", "0", "#00ff00"));
-        burstStatus.appendChild(createStatusItem("Incoming Queue", "0", "#ff00ff"));
-        contentDiv.appendChild(burstStatus);
-        const updateBurstStatus = () => {
-          if (!fakeLag.enabled || !fakeLag.settings.burstMode) {
-            const existingStatus = document.getElementById("burst-status");
-            if (existingStatus) existingStatus.remove();
-            return;
-          }
-          const queueInfo = fakeLag.getQueueInfo();
-          const values = burstStatus.querySelectorAll(".burst-value");
-          if (values[0]) values[0].textContent = `${Math.round(queueInfo.nextBurstIn)}ms`;
-          if (values[1]) values[1].textContent = queueInfo.totalCount;
-          if (values[2]) values[2].textContent = queueInfo.outgoingCount;
-          if (values[3]) values[3].textContent = queueInfo.incomingCount;
-          if (values[0]) {
-            const timeLeft = queueInfo.nextBurstIn;
-            const interval = queueInfo.burstInterval;
-            const percentage = timeLeft / interval;
-            if (percentage < 0.2) values[0].style.color = "#ff0000";
-            else if (percentage < 0.5) values[0].style.color = "#ffaa00";
-            else values[0].style.color = "#00ff00";
-          }
-          setTimeout(updateBurstStatus, 50);
-        };
-        updateBurstStatus();
-      }
-      fakeLagSection.appendChild(contentDiv);
-      contentContainer.appendChild(fakeLagSection);
-    }
-    const packetViewer = modules["packetviewer"];
-    if (!packetViewer) {
-      const emptyMsg = document.createElement("div");
-      emptyMsg.textContent = "Packet Viewer module not found.";
-      emptyMsg.style.color = "#555";
-      emptyMsg.style.textAlign = "center";
-      emptyMsg.style.marginTop = "20px";
-      contentContainer.appendChild(emptyMsg);
-      return;
-    }
-    const controlsDiv = document.createElement("div");
-    controlsDiv.style.marginBottom = "10px";
-    controlsDiv.style.padding = "10px";
-    controlsDiv.style.backgroundColor = "#1a1a20";
-    controlsDiv.style.borderRadius = "4px";
-    controlsDiv.style.display = "flex";
-    controlsDiv.style.gap = "10px";
-    controlsDiv.style.alignItems = "center";
-    controlsDiv.style.flexWrap = "wrap";
-    const toggleBtn = document.createElement("button");
-    toggleBtn.textContent = packetViewer.enabled ? "Disable" : "Enable";
-    toggleBtn.style.padding = "4px 12px";
-    toggleBtn.style.background = packetViewer.enabled ? "#d32f2f" : "#2e7d32";
-    toggleBtn.style.color = "white";
-    toggleBtn.style.border = "none";
-    toggleBtn.style.cursor = "pointer";
-    toggleBtn.style.borderRadius = "2px";
-    toggleBtn.onclick = () => {
-      packetViewer.toggle();
-      toggleBtn.textContent = packetViewer.enabled ? "Disable" : "Enable";
-      toggleBtn.style.background = packetViewer.enabled ? "#d32f2f" : "#2e7d32";
-    };
-    controlsDiv.appendChild(toggleBtn);
-    const filterLabel = document.createElement("span");
-    filterLabel.textContent = "Filter:";
-    filterLabel.style.color = "#e0e0e0";
-    controlsDiv.appendChild(filterLabel);
-    const filterInput = document.createElement("input");
-    filterInput.type = "text";
-    filterInput.placeholder = "Packet name...";
-    filterInput.value = packetViewer.settings.filter || "";
-    filterInput.style.background = "#000";
-    filterInput.style.color = "white";
-    filterInput.style.border = "1px solid #444";
-    filterInput.style.padding = "4px 8px";
-    filterInput.style.borderRadius = "2px";
-    filterInput.style.width = "150px";
-    filterInput.oninput = (e) => {
-      packetViewer.settings.filter = e.target.value;
-    };
-    controlsDiv.appendChild(filterInput);
-    const directionLabel = document.createElement("span");
-    directionLabel.textContent = "Direction:";
-    directionLabel.style.color = "#e0e0e0";
-    controlsDiv.appendChild(directionLabel);
-    const directionSelect = document.createElement("select");
-    directionSelect.style.background = "#000";
-    directionSelect.style.color = "white";
-    directionSelect.style.border = "1px solid #444";
-    directionSelect.style.padding = "4px 8px";
-    directionSelect.style.borderRadius = "2px";
-    directionSelect.innerHTML = '<option value="both">Both</option><option value="incoming">Incoming</option><option value="outgoing">Outgoing</option>';
-    directionSelect.value = packetViewer.settings.direction || "both";
-    directionSelect.onchange = (e) => {
-      packetViewer.settings.direction = e.target.value;
-    };
-    controlsDiv.appendChild(directionSelect);
-    const clearBtn = document.createElement("button");
-    clearBtn.textContent = "Clear";
-    clearBtn.style.padding = "4px 12px";
-    clearBtn.style.background = "#333";
-    clearBtn.style.color = "white";
-    clearBtn.style.border = "1px solid #444";
-    clearBtn.style.cursor = "pointer";
-    clearBtn.style.borderRadius = "2px";
-    clearBtn.onclick = () => {
-      packetViewer.packets = [];
-      renderPackets();
-    };
-    controlsDiv.appendChild(clearBtn);
-    contentContainer.appendChild(controlsDiv);
-    const packetList = document.createElement("div");
-    packetList.style.maxHeight = "400px";
-    packetList.style.overflowY = "auto";
-    packetList.style.display = "flex";
-    packetList.style.flexDirection = "column";
-    packetList.style.gap = "5px";
-    if (!packetViewer.packets || packetViewer.packets.length === 0) {
-      const emptyMsg = document.createElement("div");
-      emptyMsg.textContent = "No packets captured. Enable packet viewer to start capturing.";
-      emptyMsg.style.color = "#555";
-      emptyMsg.style.textAlign = "center";
-      emptyMsg.style.marginTop = "20px";
-      packetList.appendChild(emptyMsg);
-    } else {
-      const packetsToShow = packetViewer.packets.slice(0, 100);
-      packetsToShow.forEach((packet) => {
-        const packetEl = document.createElement("div");
-        packetEl.style.backgroundColor = "#1a1a20";
-        packetEl.style.padding = "8px";
-        packetEl.style.borderRadius = "4px";
-        packetEl.style.borderLeft = `3px solid ${packet.direction === "incoming" ? "#4caf50" : "#2196f3"}`;
-        packetEl.style.fontSize = "0.85em";
-        packetEl.style.cursor = "pointer";
-        const header2 = document.createElement("div");
-        header2.style.display = "flex";
-        header2.style.justifyContent = "space-between";
-        header2.style.marginBottom = "5px";
-        header2.style.color = packet.direction === "incoming" ? "#4caf50" : "#2196f3";
-        header2.style.fontWeight = "bold";
-        const nameSpan = document.createElement("span");
-        nameSpan.textContent = packet.name;
-        header2.appendChild(nameSpan);
-        const timeSpan = document.createElement("span");
-        timeSpan.textContent = new Date(packet.timestamp).toLocaleTimeString();
-        timeSpan.style.color = "#777";
-        timeSpan.style.fontSize = "0.9em";
-        header2.appendChild(timeSpan);
-        packetEl.appendChild(header2);
-        const dataPre = document.createElement("pre");
-        dataPre.style.margin = "0";
-        dataPre.style.color = "#ccc";
-        dataPre.style.fontSize = "0.8em";
-        dataPre.style.maxHeight = "100px";
-        dataPre.style.overflow = "auto";
-        dataPre.style.whiteSpace = "pre-wrap";
-        dataPre.style.wordBreak = "break-all";
-        dataPre.textContent = packet.data.length > 500 ? packet.data.substring(0, 500) + "..." : packet.data;
-        packetEl.appendChild(dataPre);
-        let expanded = false;
-        packetEl.onclick = () => {
-          expanded = !expanded;
-          if (expanded) {
-            dataPre.textContent = packet.data;
-            dataPre.style.maxHeight = "300px";
-          } else {
-            dataPre.textContent = packet.data.length > 500 ? packet.data.substring(0, 500) + "..." : packet.data;
-            dataPre.style.maxHeight = "100px";
-          }
-        };
-        packetList.appendChild(packetEl);
-      });
-    }
-    contentContainer.appendChild(packetList);
-    if (!window.anticlient) window.anticlient = {};
-    if (!window.anticlient.ui) window.anticlient.ui = {};
-    window.anticlient.ui.updatePacketViewer = renderPackets;
-  };
-  const renderTabs = () => {
-    sidebar.innerHTML = "";
-    Object.keys(categories).forEach((cat) => {
-      const tab = document.createElement("div");
-      tab.className = "ac-tab" + (cat === activeTab ? " active" : "");
-      tab.textContent = cat;
-      tab.onclick = () => {
-        activeTab = cat;
-        updateLayout();
-        renderTabs();
-        renderModules();
-      };
-      sidebar.appendChild(tab);
-    });
-  };
-  updateLayout();
-  renderTabs();
-  renderModules();
-  let isDragging = false;
-  let currentX;
-  let currentY;
-  let initialX;
-  let initialY;
-  let xOffset = 0;
-  let yOffset = 0;
-  header.addEventListener("mousedown", dragStart);
-  window.addEventListener("mouseup", dragEnd);
-  window.addEventListener("mousemove", drag);
-  function dragStart(e) {
-    initialX = e.clientX - xOffset;
-    initialY = e.clientY - yOffset;
-    if (e.target === header || e.target.closest(".ac-header")) {
-      isDragging = true;
-    }
-  }
-  function dragEnd(e) {
-    initialX = currentX;
-    initialY = currentY;
-    isDragging = false;
-  }
-  function drag(e) {
-    if (isDragging) {
-      e.preventDefault();
-      currentX = e.clientX - initialX;
-      currentY = e.clientY - initialY;
-      xOffset = currentX;
-      yOffset = currentY;
-      setTranslate(currentX, currentY, uiRoot);
-    }
-  }
-  function setTranslate(xPos, yPos, el) {
-    el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
-  }
-  const blinkIndicator = document.createElement("div");
-  blinkIndicator.id = "blink-indicator";
-  blinkIndicator.style.position = "fixed";
-  blinkIndicator.style.top = "50%";
-  blinkIndicator.style.left = "50%";
-  blinkIndicator.style.transform = "translate(-50%, 100px)";
-  blinkIndicator.style.padding = "15px 30px";
-  blinkIndicator.style.background = "rgba(124, 77, 255, 0.9)";
-  blinkIndicator.style.border = "2px solid #7c4dff";
-  blinkIndicator.style.borderRadius = "8px";
-  blinkIndicator.style.color = "white";
-  blinkIndicator.style.fontFamily = "'Consolas', 'Monaco', monospace";
-  blinkIndicator.style.fontSize = "16px";
-  blinkIndicator.style.fontWeight = "bold";
-  blinkIndicator.style.zIndex = "99999";
-  blinkIndicator.style.display = "none";
-  blinkIndicator.style.textAlign = "center";
-  blinkIndicator.style.boxShadow = "0 0 20px rgba(124, 77, 255, 0.6)";
-  blinkIndicator.innerHTML = `
-        <div style="margin-bottom: 5px;">\u{1F52E} RECORDING BACKTRACK</div>
-        <div id="blink-stats" style="font-size: 14px; opacity: 0.9;">
-            Positions: <span id="blink-positions">0</span> |
-            Time: <span id="blink-time">0.0</span>s
-        </div>
-        <div style="font-size: 12px; margin-top: 8px; opacity: 0.7;">Release B to teleport back</div>
-    `;
-  document.body.appendChild(blinkIndicator);
-  const blinkUpdateInterval = setInterval(() => {
-    const modules2 = window.anticlient?.modules || {};
-    const blink = modules2["blink"];
-    const showCenterIndicator = !blink?.settings?.onHUD;
-    if (window.anticlient?.blinkUI?.active && showCenterIndicator) {
-      blinkIndicator.style.display = "block";
-      const positions = window.anticlient.blinkUI.positions || 0;
-      const duration = (window.anticlient.blinkUI.duration || 0) / 1e3;
-      document.getElementById("blink-positions").textContent = positions;
-      document.getElementById("blink-time").textContent = duration.toFixed(1);
-    } else {
-      blinkIndicator.style.display = "none";
-    }
-  }, 50);
-  const hudContainer = document.createElement("div");
-  hudContainer.id = "anticlient-hud";
-  hudContainer.style.position = "fixed";
-  hudContainer.style.top = "10px";
-  hudContainer.style.right = "10px";
-  hudContainer.style.zIndex = "9998";
-  hudContainer.style.pointerEvents = "none";
-  hudContainer.style.display = "flex";
-  hudContainer.style.flexDirection = "column";
-  hudContainer.style.gap = "10px";
-  hudContainer.style.fontFamily = "monospace";
-  hudContainer.style.fontSize = "12px";
-  document.body.appendChild(hudContainer);
-  const hudUpdateInterval = setInterval(() => {
-    hudContainer.innerHTML = "";
-    const modules2 = window.anticlient?.modules || {};
-    const fakeLag = modules2["fakelag"];
-    const blink = modules2["blink"];
-    if (blink && blink.enabled && blink.settings.onHUD && window.anticlient?.blinkUI?.active) {
-      const blinkUI = window.anticlient.blinkUI;
-      const panel = document.createElement("div");
-      panel.style.background = "rgba(124, 77, 255, 0.85)";
-      panel.style.border = "2px solid #7c4dff";
-      panel.style.borderRadius = "6px";
-      panel.style.padding = "10px 14px";
-      panel.style.minWidth = "220px";
-      panel.style.backdropFilter = "blur(4px)";
-      panel.style.boxShadow = "0 0 20px rgba(124, 77, 255, 0.6)";
-      const title = document.createElement("div");
-      title.textContent = "\u{1F52E} RECORDING BACKTRACK";
-      title.style.color = "white";
-      title.style.fontWeight = "bold";
-      title.style.marginBottom = "8px";
-      title.style.fontSize = "14px";
-      title.style.textShadow = "0 0 5px rgba(255, 255, 255, 0.5)";
-      title.style.textAlign = "center";
-      panel.appendChild(title);
-      const maxTime = blink.settings.maxRecordTime;
-      const currentTime = blinkUI.duration || 0;
-      const timePercentage = currentTime / maxTime * 100;
-      const progressContainer = document.createElement("div");
-      progressContainer.style.width = "100%";
-      progressContainer.style.height = "8px";
-      progressContainer.style.background = "#1a1a1a";
-      progressContainer.style.borderRadius = "4px";
-      progressContainer.style.overflow = "hidden";
-      progressContainer.style.marginBottom = "8px";
-      progressContainer.style.border = "1px solid rgba(255, 255, 255, 0.3)";
-      const progressBar = document.createElement("div");
-      progressBar.style.width = `${timePercentage}%`;
-      progressBar.style.height = "100%";
-      progressBar.style.transition = "width 0.05s linear, background 0.2s";
-      if (timePercentage > 80) {
-        progressBar.style.background = "linear-gradient(90deg, #ff0000, #ff4444)";
-        progressBar.style.boxShadow = "0 0 8px rgba(255, 0, 0, 0.8)";
-      } else if (timePercentage > 50) {
-        progressBar.style.background = "linear-gradient(90deg, #ffaa00, #ffcc44)";
-        progressBar.style.boxShadow = "0 0 8px rgba(255, 170, 0, 0.8)";
-      } else {
-        progressBar.style.background = "linear-gradient(90deg, #00ff00, #44ff44)";
-        progressBar.style.boxShadow = "0 0 8px rgba(0, 255, 0, 0.8)";
-      }
-      progressContainer.appendChild(progressBar);
-      panel.appendChild(progressContainer);
-      const stats = document.createElement("div");
-      stats.style.display = "grid";
-      stats.style.gridTemplateColumns = "1fr 1fr";
-      stats.style.gap = "8px";
-      stats.style.fontSize = "11px";
-      stats.style.borderTop = "1px solid rgba(255, 255, 255, 0.3)";
-      stats.style.paddingTop = "8px";
-      const createStat = (label, value, color = "#fff") => {
-        const stat = document.createElement("div");
-        stat.style.textAlign = "center";
-        const valueEl = document.createElement("div");
-        valueEl.textContent = value;
-        valueEl.style.color = color;
-        valueEl.style.fontWeight = "bold";
-        valueEl.style.fontSize = "18px";
-        valueEl.style.marginBottom = "2px";
-        valueEl.style.textShadow = `0 0 5px ${color}`;
-        stat.appendChild(valueEl);
-        const labelEl = document.createElement("div");
-        labelEl.textContent = label;
-        labelEl.style.color = "rgba(255, 255, 255, 0.8)";
-        labelEl.style.fontSize = "9px";
-        labelEl.style.textTransform = "uppercase";
-        stat.appendChild(labelEl);
-        return stat;
-      };
-      const positions = blinkUI.positions || 0;
-      const duration = ((blinkUI.duration || 0) / 1e3).toFixed(1);
-      stats.appendChild(createStat("Positions", positions, "#ffffff"));
-      stats.appendChild(createStat("Time", `${duration}s`, "#ffffff"));
-      panel.appendChild(stats);
-      const hint = document.createElement("div");
-      hint.textContent = "Release B to teleport back";
-      hint.style.color = "rgba(255, 255, 255, 0.7)";
-      hint.style.fontSize = "10px";
-      hint.style.textAlign = "center";
-      hint.style.marginTop = "8px";
-      panel.appendChild(hint);
-      hudContainer.appendChild(panel);
-    }
-    if (fakeLag && fakeLag.enabled && fakeLag.settings.onHUD && fakeLag.settings.burstMode) {
-      const queueInfo = fakeLag.getQueueInfo();
-      const panel = document.createElement("div");
-      panel.style.background = "rgba(0, 0, 0, 0.8)";
-      panel.style.border = "2px solid #00ffff";
-      panel.style.borderRadius = "6px";
-      panel.style.padding = "10px 14px";
-      panel.style.minWidth = "220px";
-      panel.style.backdropFilter = "blur(4px)";
-      panel.style.boxShadow = "0 0 15px rgba(0, 255, 255, 0.3)";
-      const title = document.createElement("div");
-      title.textContent = "\u{1F310} Fake Lag";
-      title.style.color = "#00ffff";
-      title.style.fontWeight = "bold";
-      title.style.marginBottom = "8px";
-      title.style.fontSize = "14px";
-      title.style.textShadow = "0 0 5px rgba(0, 255, 255, 0.5)";
-      panel.appendChild(title);
-      const progressLabel = document.createElement("div");
-      progressLabel.textContent = "Next Burst";
-      progressLabel.style.color = "#aaa";
-      progressLabel.style.fontSize = "10px";
-      progressLabel.style.marginBottom = "4px";
-      panel.appendChild(progressLabel);
-      const progressContainer = document.createElement("div");
-      progressContainer.style.width = "100%";
-      progressContainer.style.height = "8px";
-      progressContainer.style.background = "#1a1a1a";
-      progressContainer.style.borderRadius = "4px";
-      progressContainer.style.overflow = "hidden";
-      progressContainer.style.marginBottom = "8px";
-      progressContainer.style.border = "1px solid #333";
-      const progressBar = document.createElement("div");
-      const percentage = queueInfo.nextBurstIn / queueInfo.burstInterval * 100;
-      progressBar.style.width = `${percentage}%`;
-      progressBar.style.height = "100%";
-      progressBar.style.transition = "width 0.05s linear, background 0.2s";
-      if (percentage < 20) {
-        progressBar.style.background = "linear-gradient(90deg, #ff0000, #ff4444)";
-        progressBar.style.boxShadow = "0 0 8px rgba(255, 0, 0, 0.6)";
-      } else if (percentage < 50) {
-        progressBar.style.background = "linear-gradient(90deg, #ffaa00, #ffcc44)";
-        progressBar.style.boxShadow = "0 0 8px rgba(255, 170, 0, 0.6)";
-      } else {
-        progressBar.style.background = "linear-gradient(90deg, #00ff00, #44ff44)";
-        progressBar.style.boxShadow = "0 0 8px rgba(0, 255, 0, 0.6)";
-      }
-      progressContainer.appendChild(progressBar);
-      panel.appendChild(progressContainer);
-      const timeDisplay = document.createElement("div");
-      timeDisplay.textContent = `${Math.round(queueInfo.nextBurstIn)}ms`;
-      timeDisplay.style.color = "#fff";
-      timeDisplay.style.fontSize = "16px";
-      timeDisplay.style.fontWeight = "bold";
-      timeDisplay.style.textAlign = "center";
-      timeDisplay.style.marginBottom = "8px";
-      panel.appendChild(timeDisplay);
-      const stats = document.createElement("div");
-      stats.style.display = "grid";
-      stats.style.gridTemplateColumns = "1fr 1fr 1fr";
-      stats.style.gap = "8px";
-      stats.style.fontSize = "11px";
-      stats.style.borderTop = "1px solid #333";
-      stats.style.paddingTop = "8px";
-      const createStat = (label, value, color = "#fff") => {
-        const stat = document.createElement("div");
-        stat.style.textAlign = "center";
-        const valueEl = document.createElement("div");
-        valueEl.textContent = value;
-        valueEl.style.color = color;
-        valueEl.style.fontWeight = "bold";
-        valueEl.style.fontSize = "16px";
-        valueEl.style.marginBottom = "2px";
-        stat.appendChild(valueEl);
-        const labelEl = document.createElement("div");
-        labelEl.textContent = label;
-        labelEl.style.color = "#888";
-        labelEl.style.fontSize = "9px";
-        labelEl.style.textTransform = "uppercase";
-        stat.appendChild(labelEl);
-        return stat;
-      };
-      stats.appendChild(createStat("Total", queueInfo.totalCount, "#00ffff"));
-      stats.appendChild(createStat("Out", queueInfo.outgoingCount, "#00ff00"));
-      stats.appendChild(createStat("In", queueInfo.incomingCount, "#ff00ff"));
-      panel.appendChild(stats);
-      hudContainer.appendChild(panel);
-    }
-  }, 50);
-  return () => {
-    stop3DPreview();
-    if (previewRenderer) {
-      previewRenderer.dispose();
-      previewRenderer = null;
-    }
-    if (previewScene) {
-      previewScene.clear();
-      previewScene = null;
-    }
-    if (uiRoot && uiRoot.parentNode) uiRoot.parentNode.removeChild(uiRoot);
-    if (blockSelectorModal && blockSelectorModal.parentNode) blockSelectorModal.parentNode.removeChild(blockSelectorModal);
-    if (blinkIndicator && blinkIndicator.parentNode) blinkIndicator.parentNode.removeChild(blinkIndicator);
-    if (hudContainer && hudContainer.parentNode) hudContainer.parentNode.removeChild(hudContainer);
-    if (style && style.parentNode) style.parentNode.removeChild(style);
-    if (previewInterval) clearInterval(previewInterval);
-    if (blinkUpdateInterval) clearInterval(blinkUpdateInterval);
-    if (hudUpdateInterval) clearInterval(hudUpdateInterval);
-    window.removeEventListener("keydown", keydownHandler);
-    window.removeEventListener("mouseup", dragEnd);
-    window.removeEventListener("mousemove", drag);
-  };
-};
-
-// anticlient/src/logger.js
-var LogLevel = {
-  DEBUG: 0,
-  INFO: 1,
-  WARNING: 2,
-  ERROR: 3,
-  NONE: 4
-};
-var Logger = class {
-  constructor() {
-    this.level = LogLevel.INFO;
-    this.prefix = "[Anticlient]";
-    this.colors = {
-      DEBUG: "#888888",
-      INFO: "#00ffff",
-      WARNING: "#ffaa00",
-      ERROR: "#ff5555"
-    };
-  }
-  setLevel(level) {
-    this.level = level;
-    this.info(`Log level set to: ${this.getLevelName(level)}`);
-  }
-  getLevelName(level) {
-    const names = ["DEBUG", "INFO", "WARNING", "ERROR", "NONE"];
-    return names[level] || "UNKNOWN";
-  }
-  debug(...args) {
-    if (this.level <= LogLevel.DEBUG) {
-      console.log(`%c${this.prefix} [DEBUG]`, `color: ${this.colors.DEBUG}`, ...args);
-    }
-  }
-  info(...args) {
-    if (this.level <= LogLevel.INFO) {
-      console.log(`%c${this.prefix} [INFO]`, `color: ${this.colors.INFO}`, ...args);
-    }
-  }
-  warning(...args) {
-    if (this.level <= LogLevel.WARNING) {
-      console.warn(`%c${this.prefix} [WARNING]`, `color: ${this.colors.WARNING}`, ...args);
-    }
-  }
-  error(...args) {
-    if (this.level <= LogLevel.ERROR) {
-      console.error(`%c${this.prefix} [ERROR]`, `color: ${this.colors.ERROR}`, ...args);
-    }
-  }
-  // Module-specific logger
-  module(moduleName) {
-    return {
-      debug: (...args) => this.debug(`[${moduleName}]`, ...args),
-      info: (...args) => this.info(`[${moduleName}]`, ...args),
-      warning: (...args) => this.warning(`[${moduleName}]`, ...args),
-      error: (...args) => this.error(`[${moduleName}]`, ...args)
-    };
-  }
-};
-var logger = new Logger();
-if (typeof window !== "undefined") {
-  window.anticlientLogger = logger;
-}
-
-// anticlient/entry.js
+registerModuleLoader(loadCombatModules);
+registerModuleLoader(loadMovementModules);
+registerModuleLoader(loadRenderModules);
+registerModuleLoader(loadPlayerModules);
+registerModuleLoader(loadWorldModules);
+registerModuleLoader(loadClientModules);
+registerModuleLoader(loadPacketsModules);
+registerModuleLoader(loadProjectileModules);
+var VERSION = "2.0.0";
+var TPS = PHYSICS.TPS;
 var entry_default = (mod) => {
-  if (window.anticlient && window.anticlient.cleanup) {
+  if (window.anticlient?._initialized) {
+    logger.warning("Anticlient already initialized, cleaning up previous instance");
+    window.anticlient.cleanup();
+  }
+  if (window.anticlient?.cleanup) {
     try {
       window.anticlient.cleanup();
     } catch (e) {
       console.error(e);
     }
   }
-  logger.info("Initializing Modular Architecture...");
-  loadCombatModules();
-  loadMovementModules();
-  loadRenderModules();
-  loadPlayerModules();
-  loadWorldModules();
-  loadClientModules();
-  loadPacketsModules();
-  loadProjectileModules();
+  window.anticlient = window.anticlient || {};
+  window.anticlient._teardownCallbacks = [];
+  window.anticlient._initialized = true;
+  window.anticlient._version = VERSION;
+  window.anticlient._build = Date.now();
+  const registerTeardown = (fn) => {
+    window.anticlient._teardownCallbacks.push(fn);
+  };
+  window.anticlient.api = {
+    get version() {
+      return VERSION;
+    },
+    getModule: (id) => modules[id],
+    toggleModule: (id) => {
+      const m = modules[id];
+      if (m) m.toggle();
+    },
+    enableAll: () => {
+      for (const m of Object.values(modules)) {
+        if (!m.enabled) m.toggle();
+      }
+    },
+    disableAll: () => {
+      for (const m of Object.values(modules)) {
+        if (m.enabled) m.toggle();
+      }
+    },
+    getCategories: () => ALL_CATEGORIES,
+    getModules: () => modules,
+    getEventBus: () => eventBus,
+    getProfiles: () => profiles,
+    cleanup: () => window.anticlient.cleanup()
+  };
+  try {
+    const savedLogLevel = localStorage.getItem("anticlient:logLevel");
+    if (savedLogLevel !== null) {
+      logger.setLevel(parseInt(savedLogLevel));
+    }
+  } catch (e) {
+  }
+  logger.info(`Initializing Anticlient v${VERSION}...`);
+  for (const loader of moduleLoaders) {
+    try {
+      loader();
+    } catch (e) {
+      logger.error("Module loader failed:", e);
+    }
+  }
   const loggerSettings = new Module(
     "loggersettings",
     "Logger Settings",
     "Settings",
     "Configure logging level (0=Debug, 1=Info, 2=Warning, 3=Error, 4=None)",
-    { logLevel: 0 }
-    // DEBUG by default
+    { logLevel: logger.level }
   );
   loggerSettings.enabled = true;
   loggerSettings.onToggle = () => {
@@ -5834,37 +6498,185 @@ var entry_default = (mod) => {
   loggerSettings.onSettingChanged = (key, newValue) => {
     if (key === "logLevel") {
       logger.setLevel(newValue);
-      logger.info(`Log level changed to ${newValue}`);
+      try {
+        localStorage.setItem("anticlient:logLevel", String(newValue));
+      } catch (e) {
+      }
     }
   };
   registerModule(loggerSettings);
   logger.info(`Modules loaded. Total: ${Object.keys(modules).length}`);
   const cleanupUI = initUI();
+  registerTeardown(cleanupUI);
   let bot = void 0;
+  let lastBotIdentity = null;
   let loopRunning = true;
+  const bindBotEvents = (currentBot) => {
+    if (!currentBot) return;
+    if (currentBot._anticlientBound) return;
+    currentBot._anticlientBound = true;
+    if (currentBot._client) {
+      currentBot._client.on("end", () => {
+        bot = void 0;
+        lastBotIdentity = null;
+        eventBus.emit("bot:disconnect");
+      });
+      currentBot._client.on("login", () => {
+        eventBus.emit("bot:respawn");
+        for (const mod2 of Object.values(modules)) {
+          if (mod2.enabled && mod2.onRespawn) {
+            try {
+              mod2.onRespawn(bot);
+            } catch (e) {
+            }
+          }
+        }
+      });
+    }
+    currentBot.on("spawn", () => {
+      eventBus.emit("bot:respawn");
+      for (const mod2 of Object.values(modules)) {
+        if (mod2.enabled && mod2.onRespawn) {
+          try {
+            mod2.onRespawn(bot);
+          } catch (e) {
+          }
+        }
+      }
+    });
+  };
+  let tickAccumulator = 0;
+  let lastTickTime = performance.now();
+  const FIXED_DT = 1e3 / TPS;
   const loop = () => {
     if (!loopRunning) return;
-    if (!bot && window.bot) bot = window.bot;
-    if (bot) {
-      Object.values(modules).forEach((mod2) => {
-        if (mod2.enabled) mod2.onTick(bot);
-      });
+    const currentBot = window.bot;
+    if (currentBot && currentBot !== bot) {
+      bot = currentBot;
+      if (bot !== lastBotIdentity) {
+        lastBotIdentity = bot;
+        bindBotEvents(bot);
+        eventBus.emit("bot:connect", bot);
+        for (const mod2 of Object.values(modules)) {
+          if (mod2.enabled && mod2.onWorldChange) {
+            try {
+              mod2.onWorldChange(bot);
+            } catch (e) {
+            }
+          }
+        }
+      }
+    }
+    if (!currentBot) {
+      bot = void 0;
+      requestAnimationFrame(loop);
+      return;
+    }
+    const now = performance.now();
+    tickAccumulator += now - lastTickTime;
+    lastTickTime = now;
+    while (tickAccumulator >= FIXED_DT) {
+      tickAccumulator -= FIXED_DT;
+      updateSharedEntityCache(bot);
+      for (const mod2 of Object.values(modules)) {
+        if (!mod2.enabled) continue;
+        try {
+          mod2.onTick(bot);
+          mod2._errorCount = 0;
+        } catch (e) {
+          mod2._errorCount++;
+          logger.error(`[${mod2.id}] onTick error (${mod2._errorCount}/${mod2._maxErrors}):`, e);
+          if (mod2._errorCount >= mod2._maxErrors) {
+            logger.error(`[${mod2.id}] Auto-disabling after ${mod2._maxErrors} consecutive errors`);
+            mod2.toggle();
+          }
+        }
+      }
+    }
+    for (const mod2 of Object.values(modules)) {
+      if (!mod2.enabled) continue;
+      try {
+        if (mod2.onFrame) mod2.onFrame(bot);
+        if (mod2.onRender) mod2.onRender(bot);
+      } catch (e) {
+        if (mod2._errorCount < mod2._maxErrors) {
+          logger.debug(`[${mod2.id}] onRender error:`, e);
+        }
+      }
     }
     requestAnimationFrame(loop);
   };
   loop();
-  if (!window.anticlient) window.anticlient = {};
-  window.anticlient.cleanup = () => {
-    cleanupUI();
-    loopRunning = false;
-    console.log("[Anticlient] Cleaned up.");
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Pause" || e.key === "ScrollLock" || e.ctrlKey && e.code === "Backslash") {
+      e.preventDefault();
+      let disabledCount = 0;
+      for (const mod2 of Object.values(modules)) {
+        if (mod2.enabled) {
+          mod2.toggle();
+          disabledCount++;
+        }
+      }
+      logger.warning(`PANIC: Disabled ${disabledCount} modules`);
+    }
+  });
+  const detectProtocolVersion = (currentBot) => {
+    if (!currentBot || !currentBot.version) return;
+    try {
+      const protocolVersion = currentBot.version;
+      window.anticlient._protocolVersion = protocolVersion;
+      eventBus.emit("protocol:detected", protocolVersion);
+      const isModern = parseInt(protocolVersion) >= 735;
+      const isLegacy = parseInt(protocolVersion) < 340;
+      window.anticlient._protocolFlags = { isModern, isLegacy };
+      logger.info(`Detected protocol version: ${protocolVersion} (${isModern ? "modern" : isLegacy ? "legacy" : "standard"})`);
+    } catch (e) {
+    }
   };
+  eventBus.on("bot:connect", detectProtocolVersion);
+  const cleanup = () => {
+    loopRunning = false;
+    for (const mod2 of Object.values(modules)) {
+      if (mod2.enabled) {
+        try {
+          mod2.onDisable(bot);
+        } catch (e) {
+        }
+        mod2.enabled = false;
+      }
+      mod2._clearAllTimers();
+      mod2._removeAllListeners();
+    }
+    for (const fn of window.anticlient._teardownCallbacks) {
+      try {
+        fn();
+      } catch (e) {
+      }
+    }
+    window.anticlient._teardownCallbacks = [];
+    if (bot && bot._originalAttack) {
+      bot.attack = bot._originalAttack;
+      delete bot._originalAttack;
+    }
+    cleanupUI();
+    logger.info("Anticlient cleaned up.");
+  };
+  window.anticlient.cleanup = cleanup;
+  registerTeardown(() => {
+    if (bot?._client) {
+      bot._client._anticlientBound = false;
+    }
+  });
   return {
     deactivate: () => {
-      window.anticlient.cleanup();
+      cleanup();
     }
   };
 };
+if (typeof window !== "undefined") {
+  window.anticlient = window.anticlient || {};
+  window.anticlient.modules = modules;
+}
 export {
   entry_default as default
 };
