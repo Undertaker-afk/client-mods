@@ -11,9 +11,8 @@ export const loadWorldModules = () => {
         mode: { type: 'dropdown', options: ['all', 'filter'] }
     })
     nuker.onTick = (bot) => {
-        if (bot.targetDigBlock) return // Already digging
+        if (bot.targetDigBlock) return
 
-        // Find a block to break
         const target = bot.findBlock({
             matching: (block) => {
                 if (block.name === 'air' || block.name === 'bedrock' || block.hardness >= 100) return false
@@ -26,7 +25,9 @@ export const loadWorldModules = () => {
         })
 
         if (target) {
-            bot.dig(target).catch(e => { }) // Ignore errors
+            // Rotate to face block before breaking
+            bot.lookAt(target.position.offset(0.5, 0.5, 0.5))
+            bot.dig(target).catch(e => {})
         }
     }
     registerModule(nuker)
@@ -50,26 +51,34 @@ export const loadWorldModules = () => {
     registerModule(fastPlace)
 
     // -- Fast Break --
-    const fastBreak = new Module('fastbreak', 'Fast Break', 'World', 'Break blocks faster', { multiplier: 0.5 })
+    const fastBreak = new Module('fastbreak', 'Fast Break', 'World', 'Break blocks faster', { multiplier: 0.5, maxMultiply: 0.3, legitCap: true })
+
     let originalDigTime = null
-    fastBreak.onToggle = (enabled) => {
-        if (!window.bot) return
-        if (enabled && !originalDigTime) {
-            originalDigTime = window.bot.digTime.bind(window.bot)
-            window.bot.digTime = function(block) {
+
+    fastBreak.onEnable = (bot) => {
+        if (!bot) return
+        if (!originalDigTime) {
+            originalDigTime = bot.digTime.bind(bot)
+            bot.digTime = function(block) {
                 const originalTime = originalDigTime(block)
-                // Reduce dig time by multiplier (0.5 = half time)
-                return originalTime * fastBreak.settings.multiplier
+                let result = originalTime * fastBreak.settings.multiplier
+                // Apply legit cap to prevent server desync
+                if (fastBreak.settings.legitCap) {
+                    result = Math.max(result, originalTime * fastBreak.settings.maxMultiply)
+                }
+                return result
             }
-        } else if (!enabled && originalDigTime) {
-            window.bot.digTime = originalDigTime
+        }
+    }
+
+    fastBreak.onDisable = (bot) => {
+        if (originalDigTime && bot) {
+            bot.digTime = originalDigTime
             originalDigTime = null
         }
     }
-    fastBreak.onTick = (bot) => {
-        // Fast break works by modifying digTime calculation
-        // Actual breaking speed is server-side, but we can optimize client-side timing
-    }
+
+    fastBreak.onTick = (bot) => {}
     registerModule(fastBreak)
 
     // -- X-Ray/Block ESP --

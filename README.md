@@ -188,6 +188,32 @@ npx esbuild anticlient/entry.js --bundle --format=esm --outfile=anticlient/mainU
 
 ## 📝 Version History
 
+### v2.0.0
+- Complete architecture overhaul with fixed-timestep game loop (20 TPS tick + per-frame render)
+- Module error isolation with auto-disable for repeat offenders
+- Deep settings proxy with validation, persistence, and nested object support
+- Shared attack hook chain for Criticals/W-Tap/Killaura
+- Protocol version detection and feature gating
+- Shared entity cache (computed once per tick)
+- Enhanced KillAura: FOV limit, wall check, target sorting, cooldown awareness
+- Packet-based velocity/knockback handling
+- Fullbright via gamma/viewer light (not per-block)
+- Scaffold/Nuker with rotation+raycast for legitimate placement
+- Packet Viewer: filtering, pause, export, throttle
+- Fake Lag: packet ordering preservation
+- Module search/filter in UI
+- Script sandbox with safe API
+- Panic key (Ctrl+Backslash/Pause) to disable all modules
+- XSS sanitization for server-controlled strings
+- Debounced localStorage writes
+- Elytra/BoatFly speed caps to prevent teleport-back
+- Blink position memory cap and death/teleport cleanup
+- Freecam proper entity freeze and state restore
+- PingSpoof keepalive timeout cap (29s max)
+- Stronger ToS/disclaimer warnings
+- Network modules never auto-enabled on load
+- Removed backup files from repo
+
 ### v1.7.0
 - Added Freecam module
 - Added HUD overlay system
@@ -195,6 +221,22 @@ npx esbuild anticlient/entry.js --bundle --format=esm --outfile=anticlient/mainU
 - Improved ESP distance label scaling
 - Fixed tracer line stability
 - Collapsible UI sections
+
+## ⚠️ WARNING - Read Before Use
+
+**This client modification software is intended for educational and single-player use only.**
+
+Using this software on multiplayer servers may violate the server's terms of service and can result in:
+- Account suspension or permanent ban
+- IP bans
+- Legal consequences depending on jurisdiction
+
+**By using this software, you accept full responsibility for any consequences.** The authors assume no liability for account actions, bans, or other damages.
+
+**Safety features:**
+- Network-modifying modules (Packet Viewer, Fake Lag, Ping Spoof) are NEVER auto-enabled on load
+- All modules start disabled by default
+- Use the Panic key (Ctrl+Backslash or Pause) to instantly disable all modules
 
 ## ⚠️ Disclaimer
 

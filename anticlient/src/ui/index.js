@@ -11,8 +11,22 @@ export const initUI = () => {
     const uiRoot = document.createElement('div')
     uiRoot.id = 'anticlient-root'
     uiRoot.style.position = 'fixed'
-    uiRoot.style.top = '100px'
-    uiRoot.style.left = '100px'
+
+    // Persist window position
+    try {
+        const savedPos = JSON.parse(localStorage.getItem('anticlient:uiPos'))
+        if (savedPos) {
+            uiRoot.style.top = savedPos.top || '100px'
+            uiRoot.style.left = savedPos.left || '100px'
+        } else {
+            uiRoot.style.top = '100px'
+            uiRoot.style.left = '100px'
+        }
+    } catch (e) {
+        uiRoot.style.top = '100px'
+        uiRoot.style.left = '100px'
+    }
+
     uiRoot.style.zIndex = '10000'
     uiRoot.style.fontFamily = "'Consolas', 'Monaco', monospace"
     uiRoot.style.userSelect = 'none'
@@ -258,7 +272,7 @@ export const initUI = () => {
 
     const header = document.createElement('div')
     header.className = 'ac-header'
-    header.innerHTML = '<span class="ac-title">ANTICLIENT</span> <span style="font-size: 0.8em; color: gray">v1.4</span>'
+    header.innerHTML = '<span class="ac-title">ANTICLIENT</span> <span style="font-size: 0.8em; color: gray">v2.0</span>'
     windowEl.appendChild(header)
 
     const bodyEl = document.createElement('div')
@@ -523,7 +537,15 @@ export const initUI = () => {
     }
 
     // State & Logic
-    let activeTab = 'Movement' // Default
+    let activeTab = 'Movement'
+
+    // Persist active tab
+    try {
+        const savedTab = localStorage.getItem('anticlient:activeTab')
+        if (savedTab && categories[savedTab]) activeTab = savedTab
+    } catch (e) {}
+
+    let searchFilter = ''
 
     // 3D Preview Setup
     let previewScene = null
@@ -688,6 +710,34 @@ export const initUI = () => {
     const renderModules = () => {
         contentContainer.innerHTML = ''
 
+        // Search filter input
+        const searchContainer = document.createElement('div')
+        searchContainer.style.cssText = 'margin-bottom: 12px; padding: 0 2px;'
+        const searchInput = document.createElement('input')
+        searchInput.type = 'text'
+        searchInput.placeholder = 'Search modules...'
+        searchInput.value = searchFilter
+        searchInput.style.cssText = 'width: 100%; padding: 8px 12px; background: #1a1a20; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; font-family: inherit; font-size: 0.95em; box-sizing: border-box;'
+        searchInput.oninput = () => {
+            searchFilter = searchInput.value.toLowerCase()
+            renderModules()
+        }
+        searchContainer.appendChild(searchInput)
+        contentContainer.appendChild(searchContainer)
+
+        // Clear filter button
+        if (searchFilter) {
+            const clearBtn = document.createElement('button')
+            clearBtn.textContent = '✕ Clear'
+            clearBtn.style.cssText = 'margin-top: 6px; padding: 4px 10px; background: #333; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em;'
+            clearBtn.onclick = () => {
+                searchFilter = ''
+                searchInput.value = ''
+                renderModules()
+            }
+            searchContainer.appendChild(clearBtn)
+        }
+
         // Special handling for Packets tab
         if (activeTab === 'Packets') {
             renderPackets()
@@ -702,9 +752,18 @@ export const initUI = () => {
 
         const catMods = categories[activeTab] || []
 
-        if (!catMods.length) {
+        // Filter by search
+        const filteredMods = searchFilter
+            ? catMods.filter(mod =>
+                mod.id.toLowerCase().includes(searchFilter) ||
+                mod.name.toLowerCase().includes(searchFilter) ||
+                mod.description.toLowerCase().includes(searchFilter)
+            )
+            : catMods
+
+        if (!filteredMods.length) {
             const emptyMsg = document.createElement('div')
-            emptyMsg.textContent = 'No modules in this category.'
+            emptyMsg.textContent = searchFilter ? 'No modules match search.' : 'No modules in this category.'
             emptyMsg.style.color = '#555'
             emptyMsg.style.textAlign = 'center'
             emptyMsg.style.marginTop = '20px'
@@ -712,7 +771,7 @@ export const initUI = () => {
             return
         }
 
-        catMods.forEach(mod => {
+        filteredMods.forEach(mod => {
             const modEl = document.createElement('div')
             modEl.className = 'ac-module' + (mod.enabled ? ' enabled' : '')
             mod.uiElement = modEl
@@ -1085,8 +1144,12 @@ export const initUI = () => {
         codeEditor.style.borderRadius = '4px'
         codeEditor.placeholder = '// Example:\n// bot.chat("Hello from script!")\n// console.log(bot.entity.position)'
         codeEditor.value = localStorage.getItem('anticlient_script') || ''
+        let scriptSaveTimeout = null
         codeEditor.oninput = () => {
-            localStorage.setItem('anticlient_script', codeEditor.value)
+            clearTimeout(scriptSaveTimeout)
+            scriptSaveTimeout = setTimeout(() => {
+                localStorage.setItem('anticlient_script', codeEditor.value)
+            }, 500)
         }
         editorSection.appendChild(codeEditor)
 
@@ -1105,13 +1168,34 @@ export const initUI = () => {
         runBtn.style.borderRadius = '4px'
         runBtn.style.fontWeight = 'bold'
         runBtn.onclick = () => {
+            if (!codeEditor.value.trim()) {
+                alert('Please enter some code to run.')
+                return
+            }
             try {
-                // Use Function constructor instead of eval to avoid bundler issues
-                // This creates a function with access to global scope
-                const fn = new Function('bot', 'window', codeEditor.value)
-                const result = fn(window.bot, window)
-                console.log('Script result:', result)
-                alert('Script executed successfully! Check console for output.')
+                const safeAPI = {
+                    bot: window.bot,
+                    modules: window.anticlient?.api,
+                    logger: window.anticlientLogger,
+                    chat: (msg) => window.bot?.chat(String(msg)),
+                    move: (x, y, z) => window.bot?.entity?.position?.set(x, y, z),
+                    getPos: () => window.bot?.entity?.position?.clone(),
+                    getAllEntities: () => window.bot?.entities,
+                    getPlayers: () => Object.values(window.bot?.entities || {}).filter(e => e.type === 'player'),
+                    sleep: (ms) => new Promise(resolve => setTimeout(resolve, ms))
+                }
+                // Wrap in try/catch for safety
+                const wrappedCode = `
+                    try {
+                        ${codeEditor.value}
+                    } catch (err) {
+                        console.error('[Script Error]', err.message);
+                        throw err;
+                    }
+                `
+                const fn = new Function('api', wrappedCode)
+                const result = fn(safeAPI)
+                console.log('Script executed successfully. Result:', result)
             } catch (err) {
                 console.error('Script error:', err)
                 alert('Script error: ' + err.message)
@@ -1705,6 +1789,7 @@ export const initUI = () => {
             tab.textContent = cat
             tab.onclick = () => {
                 activeTab = cat
+                try { localStorage.setItem('anticlient:activeTab', cat) } catch (e) {}
                 updateLayout()
                 renderTabs()
                 renderModules()
@@ -1742,6 +1827,14 @@ export const initUI = () => {
         initialX = currentX;
         initialY = currentY;
         isDragging = false;
+        // Persist position
+        try {
+            const rect = uiRoot.getBoundingClientRect()
+            localStorage.setItem('anticlient:uiPos', JSON.stringify({
+                top: rect.top + 'px',
+                left: rect.left + 'px'
+            }))
+        } catch (e) {}
     }
     function drag(e) {
         if (isDragging) {

@@ -118,14 +118,21 @@ export const loadMovementModules = () => {
     freecam.onToggle = (enabled) => {
         if (!window.bot || !window.bot.entity) return
         const log = window.anticlientLogger?.module('Freecam')
+        const bot = window.bot
 
         if (enabled) {
-            // Store original position
-            originalPosition = window.bot.entity.position.clone()
-            freecamPosition = window.bot.entity.position.clone()
-            freecamYaw = window.bot.entity.yaw
-            freecamPitch = window.bot.entity.pitch
+            originalPosition = bot.entity.position.clone()
+            freecamPosition = bot.entity.position.clone()
+            freecamYaw = bot.entity.yaw
+            freecamPitch = bot.entity.pitch
             freecamVelocity = { x: 0, y: 0, z: 0 }
+
+            // Freeze player entity client-side
+            freecam._frozenGravity = bot.physics?.gravity
+            freecam._frozenPhysics = bot.entity._frozen
+            if (bot.physics) bot.physics.gravity = 0
+            bot.entity._frozen = true
+            bot.entity.velocity.set(0, 0, 0)
 
             // Setup interaction handler (click to interact from freecam position)
             if (freecam.settings.interaction) {
@@ -177,7 +184,18 @@ export const loadMovementModules = () => {
                 log.info('Freecam interaction enabled - Click to interact from camera position')
             }
         } else {
-            // Reset camera to player position
+            const bot = window.bot
+            // Restore player physics
+            if (freecam._frozenGravity !== undefined && bot.physics) {
+                bot.physics.gravity = freecam._frozenGravity
+            }
+            if (bot.entity) {
+                bot.entity._frozen = freecam._frozenPhysics || false
+                // Restore position
+                if (originalPosition) {
+                    bot.entity.position.set(originalPosition.x, originalPosition.y, originalPosition.z)
+                }
+            }
             freecamPosition = null
             freecamVelocity = { x: 0, y: 0, z: 0 }
             
@@ -427,7 +445,31 @@ export const loadMovementModules = () => {
     registerModule(spider)
 
     // -- NoFall --
-    const nofall = new Module('nofall', 'NoFall', 'Movement', 'Avoid fall damage', {})
+    const nofall = new Module('nofall', 'NoFall', 'Movement', 'Avoid fall damage', { packetHook: true })
+
+    nofall.onEnable = (bot) => {
+        if (!bot || !nofall.settings.packetHook) return
+        if (!bot._client) return
+        // Hook fall distance — server uses this to calculate damage
+        const origWrite = bot._client.write.bind(bot._client)
+        nofall._origWrite = origWrite
+        bot._client.write = (name, params) => {
+            if (name === 'position' || name === 'position_look') {
+                if (params && bot.entity.velocity.y < -0.5) {
+                    params.onGround = true
+                }
+            }
+            return origWrite(name, params)
+        }
+    }
+
+    nofall.onDisable = (bot) => {
+        if (nofall._origWrite && bot && bot._client) {
+            bot._client.write = nofall._origWrite
+            delete nofall._origWrite
+        }
+    }
+
     nofall.onTick = (bot) => {
         if (bot.entity.velocity.y < -0.5) {
             bot.entity.onGround = true
@@ -547,26 +589,50 @@ export const loadMovementModules = () => {
         }
     }
 
+    blink.onEnable = (bot) => {
+        if (!bot) return
+        blink._onDeath = () => {
+            positionHistory = []
+            recordStartPos = null
+            isRecording = false
+            updateBlinkUI()
+        }
+        bot.on('death', blink._onDeath)
+    }
+
+    blink.onDisable = (bot) => {
+        if (blink._onDeath && bot) {
+            bot.removeListener('death', blink._onDeath)
+            delete blink._onDeath
+        }
+    }
+
     blink.onTick = (bot) => {
         if (!bot || !bot.entity || !bot.entity.position) return
-
         const now = Date.now()
-
         if (isRecording) {
-            // Record position
             if (now - (positionHistory[positionHistory.length - 1]?.time || 0) >= blink.settings.recordInterval) {
-                positionHistory.push({
-                    pos: bot.entity.position.clone(),
-                    time: now
-                })
+                positionHistory.push({ pos: bot.entity.position.clone(), time: now })
 
-                // Limit history to maxRecordTime (remove oldest)
                 const cutoffTime = now - blink.settings.maxRecordTime
                 positionHistory = positionHistory.filter(p => p.time >= cutoffTime)
 
-                // Update HUD
+                // Cap memory at 500 positions
+                if (positionHistory.length > 500) {
+                    positionHistory = positionHistory.slice(-500)
+                }
+
                 updateBlinkUI()
             }
+        }
+
+        // Clear on teleport (if position jumps more than 10 blocks)
+        const lastPos = positionHistory[positionHistory.length - 1]
+        if (lastPos && lastPos.pos.distanceTo(bot.entity.position) > 10) {
+            positionHistory = []
+            isRecording = false
+            recordStartPos = null
+            updateBlinkUI()
         }
     }
 
@@ -644,26 +710,24 @@ export const loadMovementModules = () => {
     // -- Elytra Fly --
     const elytraFly = new Module('elytrafly', 'Elytra Fly', 'Movement', 'Auto-activate and control elytra', {
         autoActivate: true,
-        speed: 1.0
+        speed: 1.0,
+        maxSpeed: 2.0
     })
     elytraFly.onTick = (bot) => {
         if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
         
         if (elytraFly.settings.autoActivate && bot.entity.velocity.y < -0.5) {
-            // Check if elytra is equipped
-            const chestplate = bot.inventory.slots[6] // Chest slot
+            const chestplate = bot.inventory.slots[6]
             if (chestplate && chestplate.name === 'elytra') {
-                // Activate elytra
                 if (bot.elytraFly) {
                     bot.elytraFly()
                 }
             }
         }
         
-        // Control flight
         if (bot.entity.elytraFlying) {
             const yaw = bot.entity.yaw
-            const speed = elytraFly.settings.speed
+            const speed = Math.min(elytraFly.settings.speed, elytraFly.settings.maxSpeed)
             
             if (bot.controlState.forward) {
                 bot.entity.velocity.x = -Math.sin(yaw) * speed
@@ -685,14 +749,15 @@ export const loadMovementModules = () => {
     // -- Scaffold (Enhanced) --
     scaffold.settings.range = 5
     scaffold.settings.sneakOnly = false
+    scaffold.settings.rotation = true
+
     scaffold.onTick = (bot) => {
-        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
+        if (!bot.inventory || !bot.inventory.slots) return
         if (scaffold.settings.sneakOnly && !bot.controlState.sneak) return
         
         const pos = bot.entity.position
         const blockBelow = bot.blockAt(pos.offset(0, -1, 0))
         if (blockBelow && blockBelow.boundingBox === 'empty') {
-            // Find block to place
             const item = bot.inventory.items().find(i => 
                 i.name !== 'air' && 
                 !i.name.includes('sword') && 
@@ -701,13 +766,17 @@ export const loadMovementModules = () => {
                 !i.name.includes('shovel')
             )
             if (item) {
+                // Use rotation + raycast for legitimate block placement
+                if (scaffold.settings.rotation) {
+                    // Look down at the placement spot
+                    bot.look(bot.entity.yaw, Math.PI / 2, false)
+                }
                 bot.equip(item, 'hand').then(() => {
-                    // Try to place block
                     const referenceBlock = bot.blockAt(pos.offset(0, -2, 0))
                     if (referenceBlock && referenceBlock.boundingBox !== 'empty') {
                         bot.placeBlock(referenceBlock, { x: 0, y: 1, z: 0 }).catch(() => {})
                     }
-                }).catch(() => { })
+                }).catch(() => {})
             }
         }
     }
@@ -1015,7 +1084,8 @@ export const loadMovementModules = () => {
     const boatFly = new Module('boatfly', 'Boat Fly', 'Movement', 'Fly using boats', {
         speed: 2.0,
         verticalSpeed: 1.0,
-        glide: true // Glide instead of fall
+        maxSpeed: 4.0,
+        glide: true
     })
 
     boatFly.onTick = (bot) => {
@@ -1025,9 +1095,8 @@ export const loadMovementModules = () => {
         if (!vehicle || !vehicle.name?.includes('boat')) return
 
         const yaw = bot.entity.yaw
-        const speed = boatFly.settings.speed
+        const speed = Math.min(boatFly.settings.speed, boatFly.settings.maxSpeed)
 
-        // Horizontal movement
         if (bot.controlState.forward) {
             vehicle.velocity.x = -Math.sin(yaw) * speed
             vehicle.velocity.z = -Math.cos(yaw) * speed
@@ -1039,16 +1108,14 @@ export const loadMovementModules = () => {
             vehicle.velocity.z *= 0.9
         }
 
-        // Vertical movement
         if (bot.controlState.jump) {
             vehicle.velocity.y = boatFly.settings.verticalSpeed
         } else if (bot.controlState.sneak) {
             vehicle.velocity.y = -boatFly.settings.verticalSpeed
         } else if (boatFly.settings.glide) {
-            vehicle.velocity.y = Math.max(vehicle.velocity.y, -0.1) // Slow fall
+            vehicle.velocity.y = Math.max(vehicle.velocity.y, -0.1)
         }
     }
-
     registerModule(boatFly)
 
     // -- Entity Speed --

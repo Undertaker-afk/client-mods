@@ -53,30 +53,6 @@ export const loadPlayerModules = () => {
     }
     registerModule(autoEat)
 
-    // -- Auto-Totem (Moved from Combat) --
-    const autoTotem = new Module('autototem', 'Auto Totem', 'Player', 'Auto-equip totem in offhand', {
-        healthThreshold: 16,
-        checkInterval: 5
-    })
-    let totemTick = 0
-    autoTotem.onTick = (bot) => {
-        if (!bot.inventory || !bot.inventory.slots) return // Guard against undefined inventory
-        
-        totemTick++
-        if (totemTick % autoTotem.settings.checkInterval !== 0) return
-        
-        const needsTotem = bot.health <= autoTotem.settings.healthThreshold
-        const offhandItem = bot.inventory.slots[45] // Offhand slot
-        
-        if (needsTotem && (!offhandItem || offhandItem.name !== 'totem_of_undying')) {
-            const totem = bot.inventory.items().find(item => item.name === 'totem_of_undying')
-            if (totem) {
-                bot.equip(totem, 'off-hand').catch(() => {})
-            }
-        }
-    }
-    registerModule(autoTotem)
-
     // -- Inventory Sorter --
     const inventorySorter = new Module('inventorysorter', 'Inventory Sorter', 'Player', 'Auto-organize inventory', {
         enabled: false,
@@ -819,7 +795,7 @@ export const loadPlayerModules = () => {
             window.bot.on('message', (jsonMsg, position) => {
                 if (!chatImprovements.enabled) return
 
-                const message = jsonMsg.toString()
+                const message = String(jsonMsg.toString())
                 const now = Date.now()
 
                 // Spam filter
@@ -829,13 +805,14 @@ export const loadPlayerModules = () => {
                     ).length
 
                     if (recentSame >= chatImprovements.settings.spamThreshold) {
-                        if (log) log.debug(`Filtered spam: ${message}`)
-                        return // Don't process spam
+                        if (log) log.debug(`Filtered spam`)
+                        return
                     }
                 }
 
-                // Store message
-                chatMessages.push({ text: message, time: now })
+                // Store message (sanitized)
+                const sanitized = String(message).replace(/<[^>]*>/g, '')
+                chatMessages.push({ text: sanitized, time: now })
                 
                 // Keep only last 100 messages
                 if (chatMessages.length > 100) {
@@ -844,9 +821,8 @@ export const loadPlayerModules = () => {
 
                 // Check for mentions
                 if (chatImprovements.settings.highlightMentions && window.bot.username) {
-                    if (message.toLowerCase().includes(window.bot.username.toLowerCase())) {
-                        if (log) log.info(`You were mentioned: ${message}`)
-                        // Could play sound here if we had audio API
+                    if (sanitized.toLowerCase().includes(window.bot.username.toLowerCase())) {
+                        if (log) log.info(`You were mentioned in chat`)
                     }
                 }
             })
@@ -880,12 +856,13 @@ export const loadPlayerModules = () => {
     })
 
     let originalKeepAlive = null
+    let keepAliveTimeout = null
+    const MAX_KEEPALIVE_DELAY = 29000 // 29s max to prevent timeout (server uses 30s)
 
     pingSpoof.onToggle = (enabled) => {
         const log = window.anticlientLogger?.module('PingSpoof')
         
         if (enabled && window.bot && window.bot._client) {
-            // Hook keep_alive packets (used for ping calculation)
             const client = window.bot._client
             
             if (!originalKeepAlive) {
@@ -894,7 +871,6 @@ export const loadPlayerModules = () => {
 
             client.write = (name, data) => {
                 if (name === 'keep_alive' && pingSpoof.enabled) {
-                    // Delay the response to increase displayed ping
                     let delay = 0
                     
                     if (pingSpoof.settings.mode === 'Add') {
@@ -905,6 +881,9 @@ export const loadPlayerModules = () => {
                         delay = pingSpoof.settings.randomMin + 
                             Math.random() * (pingSpoof.settings.randomMax - pingSpoof.settings.randomMin)
                     }
+
+                    // Cap delay to prevent server timeout
+                    delay = Math.min(delay, MAX_KEEPALIVE_DELAY)
 
                     setTimeout(() => {
                         originalKeepAlive(name, data)

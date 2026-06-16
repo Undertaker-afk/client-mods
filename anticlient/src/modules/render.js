@@ -1,8 +1,38 @@
 
-import { Module, registerModule } from '../core/Module.js'
+import { Module, registerModule, modules } from '../core/Module.js'
+import { sanitizeHTML } from '../core/sanitizer.js'
 
 export const loadRenderModules = () => {
     const fullbright = new Module('fullbright', 'Fullbright', 'Render', 'See in the dark', { gamma: 1.0 })
+
+    fullbright.onEnable = (bot) => {
+        if (window.viewer?.world) {
+            fullbright._origGamma = window.viewer.world.gamma
+            window.viewer.world.gamma = fullbright.settings.gamma
+        }
+        // Also try host render settings
+        if (window.options) {
+            fullbright._origBrightness = window.options.brightness
+            window.options.brightness = 1.0
+        }
+    }
+
+    fullbright.onDisable = (bot) => {
+        if (window.viewer?.world && fullbright._origGamma !== undefined) {
+            window.viewer.world.gamma = fullbright._origGamma
+            delete fullbright._origGamma
+        }
+        if (window.options && fullbright._origBrightness !== undefined) {
+            window.options.brightness = fullbright._origBrightness
+            delete fullbright._origBrightness
+        }
+    }
+
+    fullbright.onSettingChanged = (key, newValue) => {
+        if (key === 'gamma' && fullbright.enabled && window.viewer?.world) {
+            window.viewer.world.gamma = newValue
+        }
+    }
     registerModule(fullbright)
 
     // -- ESP (Enhanced) --
@@ -254,7 +284,7 @@ export const loadRenderModules = () => {
             
             entities.push({
                 id: parseInt(id),
-                name: entity.username || entity.displayName || 'Unknown',
+                name: sanitizeHTML(entity.username || entity.displayName || entity.name || 'Unknown'),
                 position: {
                     x: entity.position.x,
                     y: entity.position.y + (entity.height || 1.8) + 0.5,
@@ -437,10 +467,7 @@ export const loadRenderModules = () => {
         if (!hudElement) return
 
         const lines = []
-        lines.push(`<div style="color: #b388ff; font-weight: bold; margin-bottom: 5px; text-align: center; border-bottom: 1px solid #7c4dff; padding-bottom: 5px;">ANTICLIENT</div>`)
-
-        // Check for modules with onHUD enabled
-        const { modules } = require('../core/Module.js')
+        lines.push(`<div style="color: #b388ff; font-weight: bold; margin-bottom: 5px; text-align: center; border-bottom: 1px solid #7c4dff; padding-bottom: 5px;">${sanitizeHTML('ANTICLIENT')}</div>`)
 
         // Blink info
         const blinkModule = modules['blink']
@@ -525,9 +552,6 @@ export const loadRenderModules = () => {
     })
 
     blinkTrail.onRender = (bot) => {
-        // This will be rendered by the game's rendering system
-        // We expose the trail data through window.anticlient.visuals
-        const { modules } = require('../core/Module.js')
         const blinkModule = modules['blink']
         
         if (!window.anticlient) window.anticlient = { visuals: {} }
