@@ -1,5 +1,5 @@
 
-import { Module, modules, registerModule, categories, ALL_CATEGORIES, moduleLoaders, updateSharedEntityCache, eventBus, profiles, PHYSICS } from './src/core/Module.js'
+import { Module, modules, registerModule, registerModuleLoader, categories, ALL_CATEGORIES, moduleLoaders, updateSharedEntityCache, eventBus, profiles, PHYSICS } from './src/core/Module.js'
 import { initUI } from './src/ui/index.js'
 import { logger, LogLevel } from './src/logger.js'
 

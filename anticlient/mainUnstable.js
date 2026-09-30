@@ -323,6 +323,9 @@ ALL_CATEGORIES.forEach((cat) => {
 });
 var modules = {};
 var moduleLoaders = [];
+var registerModuleLoader = (loader) => {
+  moduleLoaders.push(loader);
+};
 var registerModule = (module) => {
   if (!categories[module.category]) categories[module.category] = [];
   categories[module.category].push(module);
